@@ -1,0 +1,117 @@
+// Contrato entre o Microsserviço A (cliente) e o Microsserviço B (servidor).
+// Os dois lados compilam este arquivo e passam a falar exatamente a mesma língua.
+//
+// Os números (= 1, = 2, ...) não são valores: são a identidade de cada campo no
+// binário do Protocol Buffers. O nome do campo nunca vai para a rede — é por isso
+// que a mensagem é compacta. Nunca reutilize um número já usado.
+
+syntax = "proto3";
+
+package expenses;
+
+// O valor 0 de um enum em proto3 é o padrão quando o campo não é preenchido.
+// Dentro de um Filter, "unspecified" significa "qualquer método".
+enum PaymentMethod {
+  METHOD_UNSPECIFIED = 0;
+  CREDIT = 1;
+  DEBIT  = 2;
+}
+
+// Um cartão é a dupla (nome, método). "Nubank crédito" e "Nubank débito" são
+// registros distintos — é isso que permite responder "gastos do Nubank no
+// crédito" sem ambiguidade.
+message Card {
+  string name = 1;
+  repeated PaymentMethod methods = 2;
+}
+
+message Expense {
+  int32         id          = 1;
+  string        product     = 2;
+  string        description = 3;
+  double        amount      = 4;
+  string        card        = 5;
+  PaymentMethod method      = 6;
+  string        category    = 7;
+  string        date        = 8;  // YYYY-MM-DD — data da transação
+  string        created_at  = 9;  // quando o registro entrou no banco
+}
+
+// Filtro compartilhado por SearchExpenses e SummaryByGroup.
+// Campo vazio (ou enum 0) = sem restrição naquele critério.
+message Filter {
+  string        card       = 1;
+  PaymentMethod method     = 2;
+  string        category   = 3;
+  string        start_date = 4;  // YYYY-MM-DD, inclusive
+  string        end_date   = 5;  // YYYY-MM-DD, inclusive
+}
+
+message RegisterCardRequest {
+  string        name   = 1;
+  PaymentMethod method = 2;
+}
+message RegisterCardResponse {
+  bool   ok      = 1;
+  string message = 2;
+}
+
+message ListCardsRequest {}
+message ListCardsResponse {
+  repeated Card cards = 1;
+}
+
+// Chamada pelo cliente ANTES de registrar ou consultar, para que um cartão
+// inventado pela LLM nunca chegue a virar uma operação no banco.
+message ValidateCardRequest {
+  string        name   = 1;
+  PaymentMethod method = 2;  // 0 = valida apenas o nome do cartão
+}
+message ValidateCardResponse {
+  bool          exists      = 1;
+  string        message     = 2;  // legível, pronto para exibir ao usuário
+  repeated Card suggestions = 3;  // cartões parecidos, para o usuário corrigir
+}
+
+message RegisterExpenseRequest {
+  string        product     = 1;
+  string        description = 2;
+  double        amount      = 3;
+  string        card        = 4;
+  PaymentMethod method      = 5;
+  string        category    = 6;
+  string        date        = 7;  // YYYY-MM-DD; vazio = hoje
+}
+message RegisterExpenseResponse {
+  Expense expense = 1;
+  bool    ok      = 2;
+  string  message = 3;
+}
+
+message GroupTotal {
+  string key    = 1;
+  double total  = 2;
+  int32  count  = 3;
+}
+message SummaryRequest {
+  string group_by = 1;  // "category" | "card" | "method"
+  Filter filter   = 2;
+}
+message SummaryResponse {
+  repeated GroupTotal totals      = 1;
+  double              grand_total = 2;
+}
+
+service ExpenseService {
+  rpc RegisterCard    (RegisterCardRequest)    returns (RegisterCardResponse);
+  rpc ListCards       (ListCardsRequest)       returns (ListCardsResponse);
+  rpc ValidateCard    (ValidateCardRequest)    returns (ValidateCardResponse);
+  rpc RegisterExpense (RegisterExpenseRequest) returns (RegisterExpenseResponse);
+
+  // server-streaming: o servidor devolve os gastos um a um, conforme os
+  // encontra, em vez de montar a lista inteira na memória. É o streaming
+  // do HTTP/2 aparecendo no contrato.
+  rpc SearchExpenses  (Filter)                 returns (stream Expense);
+
+  rpc SummaryByGroup  (SummaryRequest)         returns (SummaryResponse);
+}
