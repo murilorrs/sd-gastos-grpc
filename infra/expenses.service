@@ -1,0 +1,19 @@
+[Unit]
+Description=Microservice B - gRPC expense server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sd-gastos-grpc/server
+ExecStart=/opt/sd-gastos-grpc/.venv/bin/python server.py --database /opt/sd-gastos-grpc/expenses.db
+Restart=always
+RestartSec=3
+# Roda como root para não depender de qual usuário o gcloud criou na VM.
+# Num sistema de verdade isto seria um usuário dedicado sem shell.
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

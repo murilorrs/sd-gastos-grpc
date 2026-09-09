@@ -1,0 +1,10 @@
+# Copie para infra/config.sh e ajuste. O config.sh fica fora do git.
+PROJECT="paste-your-project-id-here"
+ZONE="southamerica-east1-a"      # São Paulo: menor latência na demo ao vivo
+MACHINE_TYPE="e2-small"
+REPO_URL="https://github.com/murilorrs/sd-gastos-grpc.git"
+
+VM_SERVER="vm-server"
+VM_CLIENT="vm-client"
+PORT="50051"
+TARGET_DIR="/opt/sd-gastos-grpc"
