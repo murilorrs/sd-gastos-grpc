@@ -1,0 +1,18 @@
+# Segredos
+.env
+
+# Stubs gerados por gerar_stubs.sh
+*_pb2.py
+*_pb2_grpc.py
+*_pb2.pyi
+
+# Banco local
+*.db
+
+# Configuração local da infraestrutura
+infra/config.sh
+
+# Python
+__pycache__/
+*.pyc
+.venv/
