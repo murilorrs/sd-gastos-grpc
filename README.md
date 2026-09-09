@@ -5,7 +5,7 @@ microsserviços via **gRPC / Protocol Buffers**, rodando em duas VMs no **Google
 Cloud Platform**, com regra de firewall VPC restringindo a porta de comunicação.
 
 O usuário descreve um gasto em português ("gastei 89 reais num teclado no
-crédito do Nubank"). O **Microsserviço A** usa o Gemini para transformar isso
+crédito do Nubank"). O **Microsserviço A** usa a API da Anthropic para transformar isso
 num comando estruturado e o envia por gRPC. O **Microsserviço B** valida,
 persiste num SQLite e responde.
 
@@ -21,7 +21,7 @@ persiste num SQLite e responde.
         │   Microservice A          │        │   Microservice B         │
         │                           │        │                          │
  texto  │   client.py               │        │   server.py              │
- ─────► │     └─ nlu.py ──► Gemini  │        │     └─ database.py ──►   │
+ ─────► │     └─ nlu.py ──► Claude  │        │     └─ database.py ──►   │
         │     └─ period.py          │        │            SQLite        │
         │                           │        │                          │
         │        gRPC stub ─────────┼───────►│ ── gRPC server :50051    │
@@ -34,7 +34,7 @@ persiste num SQLite e responde.
 
 **A LLM vive inteiramente no Microsserviço A.** O B só conhece o contrato
 `proto/expenses.proto` — não sabe que existe um modelo de linguagem. Trocar o
-Gemini por outro modelo, ou por um formulário web, não muda uma linha do
+modelo por outro, ou por um formulário web, não muda uma linha do
 servidor.
 
 ## Contrato
@@ -113,29 +113,37 @@ Duas defesas concretas nasceram de erros observados em teste, não de suposiçã
   registro. O cliente aceita os dois nomes: depender do modelo acertar o nome
   do campo é frágil demais para um dado que ninguém confere.
 
-## Configuração do Gemini
+## Configuração da LLM
 
 ```
-GEMINI_MODEL=gemini-3.6-flash
-GEMINI_MODEL_FALLBACK=gemini-3.5-flash-lite
-GEMINI_TIMEOUT_MS=15000
+ANTHROPIC_API_KEY=...     # console.anthropic.com -> API keys
+ANTHROPIC_MODEL=claude-haiku-4-5
+ANTHROPIC_TIMEOUT=30
 ```
 
-Três coisas descobertas ao integrar, todas relevantes no dia da apresentação:
+A chave sai em `console.anthropic.com` e exige créditos em Billing (pré-pago,
+mínimo US$ 5). Liste os modelos da conta com `python client/nlu.py --models`.
 
-- **Modelos somem.** O `gemini-2.5-flash` responde 404 para contas novas
-  ("no longer available to new users"). Confira o que a sua conta enxerga com
-  `python client/nlu.py --models` antes de apresentar.
-- **O free tier limita a 20 requisições por minuto**, por modelo. Um humano
-  digitando não chega perto disso; uma bateria de testes chega. Ao estourar, a
-  chamada é redirecionada ao modelo reserva, que tem cota própria.
-- **503 por alta demanda acontece.** Sem o `GEMINI_TIMEOUT_MS`, o SDK faz
-  backoff sozinho e uma chamada pode passar de um minuto. Com ele, a tentativa
-  é abortada e o código passa para o reserva e, se preciso, para o modo
-  offline — que avisa na tela e completa o comando mesmo assim.
+Este projeto usou o Gemini primeiro. A troca aconteceu por dois motivos
+medidos, e vale registrar porque explicam decisões que ficaram no código:
 
-Latência típica medida: **3 a 7 segundos** por comando, contra ~5 ms do salto
-gRPC. Vale mostrar isso na apresentação: o gRPC não é o gargalo.
+- **O free tier do Gemini dá 20 requisições por dia**, por modelo e por projeto
+  (`quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier`). Uma tarde de
+  testes esgotava a cota e a demonstração parava de funcionar.
+- **A latência ficava entre 10 e 25 segundos** quando o serviço estava
+  carregado. Ao vivo, esperar isso depois de cada frase digitada inviabiliza a
+  apresentação.
+
+Latência medida com o Haiku 4.5: **1,8 a 3,7 segundos** por comando, contra
+~4 ms do salto gRPC. Vale mostrar isso na apresentação — o cliente imprime os
+dois tempos lado a lado, e eles deixam claro que o gRPC não é o gargalo.
+
+Custo: o prompt tem ~660 tokens de entrada e a resposta ~100 de saída, o que dá
+**US$ 0,0012 por comando** no Haiku 4.5 (US$ 0,006 no Opus 5). O projeto
+inteiro, incluindo ensaios, fica abaixo de um dólar.
+
+Trocar o provedor mexeu apenas em `client/nlu.py`. O `.proto`, o servidor e o
+resto do cliente não mudaram uma linha — nenhum deles sabe qual LLM está atrás.
 
 ## Rodando localmente
 
@@ -143,7 +151,7 @@ gRPC. Vale mostrar isso na apresentação: o gRPC não é o gargalo.
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r client/requirements.txt
 bash generate_stubs.sh
-cp .env.example .env      # e preencha a GEMINI_API_KEY
+cp .env.example .env      # e preencha a ANTHROPIC_API_KEY
 ```
 
 Em um terminal:
@@ -158,7 +166,7 @@ Em outro:
 python client/client.py --server localhost:50051
 ```
 
-Sem chave do Gemini, use `--offline`: um interpretador por regras locais que
+Sem chave de API, use `--offline`: um interpretador por regras locais que
 cobre os comandos do roteiro de demonstração.
 
 ### Comandos de exemplo

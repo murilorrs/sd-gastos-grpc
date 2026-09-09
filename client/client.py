@@ -19,6 +19,7 @@ import argparse
 import os
 import sys
 import time
+import warnings
 from datetime import date
 
 import grpc
@@ -50,7 +51,7 @@ Type commands in Portuguese. Examples:
   quanto gastei em tecnologia?
   resumo por método
 
-Terminal commands:  :help   :cards   :bytes   :quit
+Terminal commands:  :help   :cards   :bytes   :clear   :quit
 """
 
 
@@ -183,6 +184,9 @@ class App:
     # ---------- actions ----------
 
     def register_card(self, args):
+        if not args.get("cards"):
+            print("  x missing card name — try: cadastra o Nubank no crédito")
+            return
         for item in args.get("cards", []):
             request = expenses_pb2.RegisterCardRequest(
                 name=item.get("name", ""),
@@ -201,10 +205,20 @@ class App:
             print("  %-14s %s" % (name, ", ".join(METHOD_LABEL[m] for m in methods)))
 
     def register_expense(self, args):
+        # Checagens locais antes de qualquer RPC: erram rápido, respondem numa
+        # linha e não gastam uma ida ao servidor para dizer o óbvio.
+        amount = float(args.get("amount") or 0)
+        if amount <= 0:
+            print("  x missing amount — say how much it cost")
+            return
+        if not args.get("product", "").strip():
+            print("  x missing product — say what you bought")
+            return
+
         method = METHOD_ENUM.get(args.get("method", ""), 0)
         card = args.get("card", "")
         if not card:
-            print("  x no card in the command. Try: 'no crédito do Nubank'")
+            print("  x missing card — try: no crédito do Nubank")
             return
         resolved = self._resolve_card(card, method, for_registration=True)
         if resolved is None:
@@ -219,7 +233,7 @@ class App:
         request = expenses_pb2.RegisterExpenseRequest(
             product=args.get("product", ""),
             description=args.get("description", ""),
-            amount=float(args.get("amount") or 0),
+            amount=amount,
             card=card,
             method=method,
             category=args.get("category", ""),
@@ -305,15 +319,18 @@ class App:
                 command = nlu.interpret_offline(text, cards, today)
             else:
                 command = nlu.interpret(text, cards, today)
-        except Exception as error:  # a API caiu, sem quota, sem rede
-            print("  ! Gemini failed (%s); falling back to offline mode"
-                  % type(error).__name__)
+        except Exception as error:  # a API caiu, sem cota, sem rede
+            print("  ! Gemini indisponível — %s; usando o modo offline"
+                  % nlu.explain(error))
             command = nlu.interpret_offline(text, self._labeled_cards(), today)
         nlu_seconds = time.perf_counter() - started
 
         action = command.get("action", "unknown")
         args = command.get("args", {})
-        print("  -> %s %s" % (action, args))
+        # Só os campos preenchidos: metade dos args vem vazia e a linha fica
+        # ilegível justamente no momento em que ela é o que se quer mostrar.
+        filled = {k: v for k, v in args.items() if v not in ("", 0, None, [], {})}
+        print("  -> %s %s" % (action, filled))
 
         handler = {
             "register_card": self.register_card,
@@ -353,6 +370,11 @@ def repl(app, address):
         if text == ":help":
             print(HELP)
             continue
+        if text in (":clear", ":cls"):
+            # 2J limpa a tela, 3J o histórico de rolagem, H volta o cursor ao
+            # topo. Sequências ANSI: não dependem de `clear` nem de subprocesso.
+            print("\033[2J\033[3J\033[H", end="")
+            continue
         if text == ":cards":
             app.reload_cards()
             app.list_cards({})
@@ -362,6 +384,17 @@ def repl(app, address):
             print("  byte dump: %s" % ("on" if app.show_bytes else "off"))
             continue
         app.run_command(text)
+
+
+def silence_known_warnings():
+    """Cala avisos que não indicam problema, para a saída ficar legível.
+
+    O urllib3 reclama que o macOS compila o módulo ssl contra LibreSSL em vez
+    de OpenSSL. É do ambiente local; na VM (Debian 12) nem aparece.
+
+    Fica só aqui, no ponto de entrada da CLI. Nenhum módulo mexe em warnings.
+    """
+    warnings.filterwarnings("ignore", message=".*OpenSSL.*")
 
 
 def load_env():
@@ -385,6 +418,7 @@ def main():
     parser.add_argument("--command", help="run a single command and exit")
     args = parser.parse_args()
 
+    silence_known_warnings()
     load_env()
     channel = grpc.insecure_channel(args.server)
     try:

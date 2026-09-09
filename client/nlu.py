@@ -4,7 +4,7 @@
 Transforma o texto do usuário num comando estruturado. Nada aqui fala gRPC: a
 saída é um dict {"action": ..., "args": {...}} que o client.py despacha.
 
-Usa saída JSON estruturada em vez de function calling. Faz o mesmo trabalho
+Pede JSON no próprio prompt em vez de usar tool calling. Faz o mesmo trabalho
 (o modelo escolhe a ação) com muito menos superfície de API para quebrar entre
 versões do SDK.
 
@@ -22,10 +22,33 @@ import unicodedata
 
 from period import PERIOD_LABELS
 
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
-FALLBACK_MODEL = os.environ.get("GEMINI_MODEL_FALLBACK", "gemini-3.5-flash-lite")
+# Migrado do Gemini para a API da Anthropic: o free tier do Gemini dava apenas
+# 20 requisições por dia por modelo, e as chamadas levavam de 10 a 25 segundos
+# quando o serviço estava carregado — inviável numa demonstração ao vivo.
+#
+# Liste os modelos disponíveis na sua conta com:
+#     python client/nlu.py --models
+DEFAULT_MODEL = "claude-haiku-4-5"
+DEFAULT_TIMEOUT = 30.0
 
-TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "15000"))
+
+def model_name():
+    """O modelo em uso, lido a cada chamada — nunca na importação.
+
+    O client.py carrega o .env dentro de main(), depois de já ter importado
+    este módulo. Uma constante avaliada no import ignoraria o arquivo inteiro,
+    e o cliente rodaria com o padrão do código sem ninguém perceber.
+    """
+    return os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
+
+
+def _timeout():
+    return float(os.environ.get("ANTHROPIC_TIMEOUT", DEFAULT_TIMEOUT))
+
+
+# A resposta é um JSON curto (~100 tokens), mas o modelo raciocina antes de
+# responder e esse raciocínio também conta aqui. A folga evita corte no meio.
+MAX_TOKENS = 4096
 
 CATEGORIES = (
     "food", "transport", "technology", "leisure",
@@ -51,9 +74,11 @@ AÇÕES DISPONÍVEIS
            "card": "Nubank", "method": "CREDIT", "category": "technology",
            "date_label": "today"}}
    Quando o gasto aconteceu vai SEMPRE em "date_label" — nunca em "period",
-   que não existe nesta ação. Valores aceitos: "today", "yesterday",
-   "day_before_yesterday". Use "date": "AAAA-MM-DD" apenas quando o texto
-   disser uma data explícita ("dia 3", "12/08").
+   que não existe nesta ação, e nunca vazio se o texto falar de tempo.
+   Aceita "today", "yesterday", "day_before_yesterday" e também qualquer
+   rótulo da lista "period" quando o texto for vago: "mês passado" vira
+   "last_month", "semana passada" vira "this_week". Use "date": "AAAA-MM-DD"
+   só quando o texto disser uma data explícita ("dia 3", "12/08").
 
 4) "search_expenses" — listar despesas
    args: {{"card": "", "method": "", "category": "", "period": "this_month"}}
@@ -105,59 +130,100 @@ def build_prompt(text, cards, today):
     )
 
 
-_genai_client = None
+_anthropic_client = None
 
 
 def _client():
-    global _genai_client
-    if _genai_client is None:
-        from google import genai
-        key = os.environ.get("GEMINI_API_KEY")
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import Anthropic
+        key = os.environ.get("ANTHROPIC_API_KEY")
         if not key:
             raise RuntimeError(
-                "GEMINI_API_KEY is not set. Copy .env.example to .env and fill "
-                "it in, or run the client with --offline.")
-        _genai_client = genai.Client(
-            api_key=key, http_options={"timeout": TIMEOUT_MS})
-    return _genai_client
+                "ANTHROPIC_API_KEY não está definida. Copie .env.example para "
+                ".env e preencha, ou rode o cliente com --offline.")
+        _anthropic_client = Anthropic(api_key=key, timeout=_timeout())
+    return _anthropic_client
 
 
-_RETRYABLE = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "500", "INTERNAL")
+# Erros que valem uma nova tentativa: sobrecarga e limite de taxa. Uma chave
+# inválida (401) ou um modelo inexistente (404) não melhoram com espera.
+_RETRYABLE = ("429", "500", "502", "503", "529", "overloaded", "rate_limit",
+              "Timeout", "Connection")
 
 
 def _retryable(error):
     return any(mark in str(error) for mark in _RETRYABLE)
 
 
+def explain(error):
+    """Resume o erro numa linha — o nome da exceção sozinho não ajuda a agir."""
+    text = str(error)
+    if "credit balance" in text or "billing" in text.lower():
+        return "sem créditos na conta — adicione em console.anthropic.com/settings/billing"
+    if "authentication" in text.lower() or "401" in text or "invalid x-api-key" in text:
+        return "chave de API inválida"
+    if "429" in text or "rate_limit" in text:
+        return "limite de requisições atingido; tente de novo em alguns segundos"
+    if "529" in text or "overloaded" in text:
+        return "API sobrecarregada (529)"
+    if "404" in text or "not_found" in text:
+        return "modelo %s indisponível para esta conta" % model_name()
+    if "Timeout" in text or "timeout" in text.lower():
+        return "tempo esgotado esperando a resposta"
+    return "%s: %s" % (type(error).__name__, text[:90])
+
+
+def _first_text(message):
+    """O texto da resposta, ignorando blocos de raciocínio que vêm antes.
+
+    Com o pensamento ligado, content[0] pode ser um bloco thinking — pegar o
+    índice zero às cegas quebraria de forma intermitente.
+    """
+    for block in message.content:
+        if getattr(block, "type", None) == "text":
+            return block.text
+    return ""
+
+
 def interpret(text, cards, today, model=None):
-    """Texto -> {"action": ..., "args": {...}} usando o Gemini.
+    """Texto -> {"action": ..., "args": {...}} usando a API da Anthropic.
 
     `cards` é [(name, [rótulos de método])], vindo do RPC ListCards.
 
-    Tenta o modelo principal e, se ele estiver sobrecarregado, o reserva. Só
-    levanta o erro se nenhuma tentativa der certo — aí o client.py cai no
+    Só levanta o erro se todas as tentativas falharem — aí o client.py cai no
     interpretador offline.
     """
     prompt = build_prompt(text, cards, today)
-    models = [model] if model else [DEFAULT_MODEL, FALLBACK_MODEL]
-    last_error = None
+    name = model or model_name()
 
-    for name in models:
-        for delay in (0, 1.5):
-            if delay:
-                time.sleep(delay)
-            try:
-                response = _client().models.generate_content(
-                    model=name,
-                    contents=prompt,
-                    config={"response_mime_type": "application/json",
-                            "temperature": 0},
-                )
-                return _load_json(response.text)
-            except Exception as error:
-                last_error = error
-                if not _retryable(error):
-                    break  # problema do modelo, não da carga: vai para o próximo
+    # A extração é simples e a lista de opções é fechada: esforço baixo entrega
+    # o mesmo resultado gastando menos tokens e respondendo mais rápido. Haiku
+    # não aceita o parâmetro, então ele só vai quando o modelo suporta.
+    options = {}
+    if not name.startswith("claude-haiku"):
+        options["output_config"] = {"effort": "low"}
+
+    last_error = None
+    for delay in (0, 1.5, 4):
+        if delay:
+            time.sleep(delay)
+        try:
+            message = _client().messages.create(
+                model=name,
+                max_tokens=MAX_TOKENS,
+                messages=[{"role": "user", "content": prompt}],
+                **options
+            )
+            # Uma recusa do classificador de segurança vem com HTTP 200 e sem
+            # texto útil; sem esta checagem viraria um JSONDecodeError confuso.
+            if getattr(message, "stop_reason", None) == "refusal":
+                raise RuntimeError("o modelo recusou interpretar este comando")
+            return _load_json(_first_text(message))
+        except Exception as error:
+            last_error = error
+            if not _retryable(error):
+                break
 
     raise last_error
 
@@ -296,6 +362,14 @@ def _find_card(plain, cards):
     return named.group(1).capitalize() if named else ""
 
 
+# Palavras que aparecem num comando de cadastro sem serem nome de cartão.
+_CARD_COMMAND_NOISE = _NOISE | {
+    "cadastra", "cadastrar", "cadastro", "adiciona", "adicionar", "registra",
+    "registrar", "cartoes", "metodo", "metodos", "funcao", "novo", "nova",
+    "favor", "quero", "vamos", "tambem", "ambos", "dois", "como",
+}
+
+
 def _find_new_cards(text, plain):
     """Extrai pares (nome, método) de um comando de cadastro.
 
@@ -303,6 +377,12 @@ def _find_new_cards(text, plain):
     método vem da palavra crédito/débito mais próxima à direita.
     """
     names = re.findall(r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]{2,})", text)
+    if not names:
+        # Comando todo em minúsculas ("cadastra o itau no debito"): sobra o que
+        # não for ruído. Sem isto o cadastro falhava calado, devolvendo [].
+        names = [word.capitalize()
+                 for word in re.findall(r"[a-zà-ÿ]{3,}", plain)
+                 if word not in _CARD_COMMAND_NOISE]
     if not names:
         return []
     found = []
@@ -365,11 +445,21 @@ def _find_product(plain, card):
 
 def _list_models():
     for model in _client().models.list():
-        print(model.name)
+        # A API lista o id datado (claude-haiku-4-5-20251001); o .env costuma
+        # usar o apelido sem data, que também é válido nas chamadas.
+        marker = " <- em uso" if model.id.startswith(model_name()) else ""
+        print("%-28s %s%s" % (model.id, model.display_name, marker))
 
 
 if __name__ == "__main__":
     if "--models" in sys.argv:
+        # Rodando solto, este módulo não passa pelo load_env() do client.py.
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+        except ImportError:
+            pass
         _list_models()
     else:
         print(__doc__)
