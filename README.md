@@ -1,5 +1,7 @@
 # Expense tracking over gRPC
 
+> **Integrantes:** Murilo Rodrigues, (preencher), (preencher)
+
 Trabalho 1 de Sistemas Distribuídos — comunicação interna entre dois
 microsserviços via **gRPC / Protocol Buffers**, rodando em duas VMs no **Google
 Cloud Platform**, com regra de firewall VPC restringindo a porta de comunicação.
@@ -180,8 +182,20 @@ quanto gastei em tecnologia?
 resumo por método
 ```
 
-Dentro do REPL: `:help`, `:cards`, `:bytes` (liga a exibição do protobuf
-serializado), `:quit`.
+Dentro do REPL:
+
+| Comando | O que faz |
+|---|---|
+| `:verbose` | mostra o comando estruturado que a LLM devolveu e os tempos de cada etapa |
+| `:bytes` | mostra o protobuf serializado de cada requisição |
+| `:cards` | lista os cartões cadastrados |
+| `:clear` | limpa a tela |
+| `:help` | exemplos de comandos |
+| `:quit` | sai |
+
+Por padrão a saída é limpa: só o resultado do comando. `:verbose` e `:bytes`
+também têm as flags `--verbose` e `--bytes` para já iniciar ligados — é assim
+que vale rodar na apresentação.
 
 ## Verificação
 
@@ -210,6 +224,26 @@ tcp:50051  ←  source-ranges 10.128.0.0/9  →  target-tags grpc-server
 
 As duas restrições são o ponto: só tráfego de dentro da VPC, e só para a VM do
 servidor. A porta não fica exposta à internet.
+
+## Requisitos do trabalho
+
+| Requisito | Onde é atendido |
+|---|---|
+| Definição do tema | Controle de gastos pessoais — este README e `proto/expenses.proto` |
+| Contrato `.proto` com estruturas de dados e serviços RPC | `proto/expenses.proto`: 14 mensagens, 1 enum, 6 RPCs |
+| Microsserviço A (cliente) envia requisição gRPC | `client/client.py` |
+| Microsserviço B (servidor) processa e responde | `server/server.py` |
+| Comunicação síncrona e eficiente | 5 RPCs unários bloqueantes + 1 server-streaming (`SearchExpenses`) |
+| Regras de firewall VPC no GCP | `infra/setup_gcp.sh` — regra `allow-grpc-internal` |
+| Infraestrutura em nuvem (GCP) | 2 VMs em `southamerica-east1-a`, criadas por `infra/setup_gcp.sh` |
+| Código-fonte no GitHub | este repositório, com os dois microsserviços e o `.proto` |
+| Troca de mensagens estruturadas e serializadas | `--bytes` / `:bytes` exibem o protobuf binário de cada requisição |
+
+O enunciado pede **um** repositório contendo os arquivos `.proto` e o código dos
+microsserviços. Microsserviço é sobre processos e máquinas separadas, não sobre
+repositórios separados — e o `.proto` ser compartilhado pelos dois lados é
+justamente o que torna o repositório único a escolha certa: em repositórios
+distintos, o contrato dessincroniza.
 
 ## Estrutura
 

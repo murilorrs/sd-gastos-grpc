@@ -1,6 +1,6 @@
 """Converte rótulos de período em datas concretas.
 
-O Gemini devolve um rótulo ("this_month"); quem faz a conta é o datetime.
+O modelo devolve um rótulo ("this_month"); quem faz a conta é o datetime.
 Modelos de linguagem erram aritmética de data com frequência — principalmente
 virada de mês e de ano — e aqui o erro seria silencioso: a consulta traria o
 intervalo errado sem nenhum aviso.

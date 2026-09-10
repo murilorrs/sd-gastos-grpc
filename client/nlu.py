@@ -242,7 +242,7 @@ def _load_json(raw):
 # Offline fallback
 #
 # Não é uma segunda implementação "por precaução": é o seguro contra o maior
-# risco do projeto, que é a API do Gemini estar fora do ar, sem quota ou
+# risco do projeto, que é a API da LLM estar fora do ar, sem créditos ou
 # inalcançável pela rede no dia da apresentação. Cobre os comandos do roteiro
 # de demonstração, não o português inteiro.
 #
@@ -258,7 +258,8 @@ _CATEGORY_KEYWORDS = {
     "transport": ("uber", "gasolina", "combustivel", "onibus", "metro", "taxi",
                   "estacionamento", "pedagio", "passagem"),
     "technology": ("teclado", "mouse", "monitor", "notebook", "celular", "fone",
-                   "ssd", "cabo", "carregador", "computador"),
+                   "ssd", "cabo", "carregador", "computador", "iphone", "ipad",
+                   "tablet", "headset", "webcam"),
     "leisure": ("cinema", "netflix", "spotify", "show", "jogo", "bar", "viagem",
                 "streaming", "ingresso"),
     "health": ("farmacia", "remedio", "medico", "dentista", "academia", "exame",

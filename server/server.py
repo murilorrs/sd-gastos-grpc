@@ -2,7 +2,7 @@
 """Microsserviço B — servidor gRPC.
 
 Não conhece a LLM. Recebe mensagens já estruturadas segundo proto/expenses.proto,
-valida, persiste no SQLite e responde. Se amanhã o cliente trocar o Gemini por
+valida, persiste no SQLite e responde. Se amanhã o cliente trocar o modelo por
 outro modelo, ou por um formulário web, nada aqui muda.
 """
 

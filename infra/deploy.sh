@@ -64,7 +64,7 @@ EOF
 )
 gcloud compute ssh "$VM_CLIENT" --zone="$ZONE" --command "$CLIENT_SCRIPT"
 
-# A chave do Gemini vai só para a vm-client. A vm-server não a tem — mesmo que
+# A chave da API vai só para a vm-client. A vm-server não a tem — mesmo que
 # alguém rodasse o cliente lá por engano, ele não funcionaria.
 if [ -f "$ROOT/.env" ]; then
   echo "==> copying .env to $VM_CLIENT"

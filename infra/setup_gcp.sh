@@ -38,7 +38,16 @@ fi
 create_vm() {
   local name=$1 tag=$2
   if gcloud compute instances describe "$name" --zone="$ZONE" --quiet >/dev/null 2>&1; then
-    echo "==> VM $name already exists"
+    echo "==> VM $name already exists — reusing it"
+    # add-tags é aditivo: preserva tags que a VM já tinha (ex.: http-server
+    # criada pelo console), em vez de sobrescrever a lista inteira.
+    gcloud compute instances add-tags "$name" --zone="$ZONE" --tags="$tag" --quiet
+    local status
+    status=$(gcloud compute instances describe "$name" --zone="$ZONE" --format="value(status)")
+    if [ "$status" != "RUNNING" ]; then
+      echo "==> starting $name (was $status)"
+      gcloud compute instances start "$name" --zone="$ZONE" --quiet
+    fi
     return
   fi
   echo "==> creating VM $name"
@@ -51,7 +60,7 @@ create_vm() {
 }
 
 # A vm-client recebe um IP externo efêmero por padrão, e precisa dele para
-# alcançar a API do Gemini. A vm-server não depende de saída para a internet.
+# alcançar a API da LLM. A vm-server não depende de saída para a internet.
 create_vm "$VM_SERVER" grpc-server
 create_vm "$VM_CLIENT" grpc-client
 

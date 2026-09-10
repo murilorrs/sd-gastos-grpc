@@ -3,7 +3,7 @@
 
 Fluxo de cada comando digitado:
 
-    texto  ->  Gemini (nlu.py)  ->  {"action", "args"}
+    texto  ->  Claude (nlu.py)  ->  {"action", "args"}
                                         |
                                         v
                              ValidateCard (RPC)  <- barra cartão inventado
@@ -51,15 +51,19 @@ Type commands in Portuguese. Examples:
   quanto gastei em tecnologia?
   resumo por método
 
-Terminal commands:  :help   :cards   :bytes   :clear   :quit
+Terminal commands:  :help   :cards   :verbose   :bytes   :clear   :quit
 """
 
 
 class App:
-    def __init__(self, stub, offline=False, show_bytes=False):
+    def __init__(self, stub, offline=False, show_bytes=False, verbose=False):
         self.stub = stub
         self.offline = offline
         self.show_bytes = show_bytes
+        # Desligado por padrão: o uso normal quer ver só o resultado. Ligue com
+        # :verbose para a apresentação, onde o comando estruturado e os tempos
+        # são justamente o que se quer mostrar.
+        self.verbose = verbose
         self.cards = []
         self.reload_cards()
 
@@ -320,17 +324,19 @@ class App:
             else:
                 command = nlu.interpret(text, cards, today)
         except Exception as error:  # a API caiu, sem cota, sem rede
-            print("  ! Gemini indisponível — %s; usando o modo offline"
+            print("  ! LLM indisponível — %s; usando o modo offline"
                   % nlu.explain(error))
             command = nlu.interpret_offline(text, self._labeled_cards(), today)
         nlu_seconds = time.perf_counter() - started
 
         action = command.get("action", "unknown")
         args = command.get("args", {})
-        # Só os campos preenchidos: metade dos args vem vazia e a linha fica
-        # ilegível justamente no momento em que ela é o que se quer mostrar.
-        filled = {k: v for k, v in args.items() if v not in ("", 0, None, [], {})}
-        print("  -> %s %s" % (action, filled))
+        if self.verbose:
+            # Só os campos preenchidos: metade dos args vem vazia e a linha
+            # fica ilegível justamente quando ela é o que se quer mostrar.
+            filled = {k: v for k, v in args.items()
+                      if v not in ("", 0, None, [], {})}
+            print("  -> %s %s" % (action, filled))
 
         handler = {
             "register_card": self.register_card,
@@ -349,8 +355,9 @@ class App:
 
         # A comparação que vale a pena mostrar na apresentação: o gRPC não é o
         # gargalo — a chamada à LLM é ordens de magnitude mais lenta.
-        print("  . nlu %.0f ms . grpc %.0f ms" % (
-            nlu_seconds * 1000, grpc_seconds * 1000))
+        if self.verbose:
+            print("  . nlu %.0f ms . grpc %.0f ms" % (
+                nlu_seconds * 1000, grpc_seconds * 1000))
 
 
 def repl(app, address):
@@ -378,6 +385,10 @@ def repl(app, address):
         if text == ":cards":
             app.reload_cards()
             app.list_cards({})
+            continue
+        if text in (":verbose", ":v"):
+            app.verbose = not app.verbose
+            print("  verbose: %s" % ("on" if app.verbose else "off"))
             continue
         if text == ":bytes":
             app.show_bytes = not app.show_bytes
@@ -412,7 +423,9 @@ def main():
     parser.add_argument("--server", default="localhost:50051",
                         help="host:port of Microservice B")
     parser.add_argument("--offline", action="store_true",
-                        help="interpret with local rules, without calling Gemini")
+                        help="interpret with local rules, without calling the LLM")
+    parser.add_argument("--verbose", action="store_true",
+                        help="show the structured command and the timings")
     parser.add_argument("--bytes", action="store_true",
                         help="print the serialized protobuf of each request")
     parser.add_argument("--command", help="run a single command and exit")
@@ -430,7 +443,8 @@ def main():
         return 1
 
     stub = expenses_pb2_grpc.ExpenseServiceStub(channel)
-    app = App(stub, offline=args.offline, show_bytes=args.bytes)
+    app = App(stub, offline=args.offline, show_bytes=args.bytes,
+              verbose=args.verbose)
     if args.command:
         app.run_command(args.command)
     else:
