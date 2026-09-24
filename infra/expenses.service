@@ -6,6 +6,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/sd-gastos-grpc/server
+# Credenciais do Cloud SQL (PGHOST, PGUSER, PGPASSWORD...), copiadas pelo
+# deploy.sh. O "-" torna o arquivo opcional: sem ele, o servidor usa o SQLite
+# do --database abaixo.
+EnvironmentFile=-/opt/sd-gastos-grpc/server.env
 ExecStart=/opt/sd-gastos-grpc/.venv/bin/python server.py --database /opt/sd-gastos-grpc/expenses.db
 Restart=always
 RestartSec=3

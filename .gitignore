@@ -16,3 +16,7 @@ infra/config.sh
 __pycache__/
 *.pyc
 .venv/
+
+# Temporários do deploy.sh (contêm a senha do banco)
+*.env.tmp
+server.env

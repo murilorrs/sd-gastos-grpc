@@ -9,7 +9,7 @@ Cloud Platform**, com regra de firewall VPC restringindo a porta de comunicaçã
 O usuário descreve um gasto em português ("gastei 89 reais num teclado no
 crédito do Nubank"). O **Microsserviço A** usa a API da Anthropic para transformar isso
 num comando estruturado e o envia por gRPC. O **Microsserviço B** valida,
-persiste num SQLite e responde.
+persiste num PostgreSQL gerenciado (Cloud SQL) e responde.
 
 > Código, identificadores e mensagens em inglês; comentários em português. A
 > entrada em linguagem natural é em português, que é o domínio da aplicação.
@@ -23,16 +23,39 @@ persiste num SQLite e responde.
         │   Microservice A          │        │   Microservice B         │
         │                           │        │                          │
  texto  │   client.py               │        │   server.py              │
- ─────► │     └─ nlu.py ──► Claude  │        │     └─ database.py ──►   │
-        │     └─ period.py          │        │            SQLite        │
-        │                           │        │                          │
-        │        gRPC stub ─────────┼───────►│ ── gRPC server :50051    │
-        └───────────────────────────┘        └──────────────────────────┘
-             10.158.0.x                            10.158.0.y
-                              └──── VPC default ────┘
-                          firewall: tcp:50051, only 10.128.0.0/9,
-                                only for tag grpc-server
+ ─────► │     └─ nlu.py ──► Claude  │        │     └─ database.py ──────┼──┐
+        │     └─ period.py          │        │                          │  │
+        │                           │        │                          │  │
+        │        gRPC stub ─────────┼───────►│ ── gRPC server :50051    │  │
+        └───────────────────────────┘        └──────────────────────────┘  │
+             10.128.0.3                            10.128.0.2              │
+                              └──── VPC default ────┘                      │
+                          firewall: tcp:50051, only 10.128.0.0/9,          │
+                                only for tag grpc-server                   │
+                                                                           │
+                                   Cloud SQL (PostgreSQL) ◄────────────────┘
+                                   banco-aula-sd · 10.115.48.3:5432
+                                   IP privado apenas, via peering da VPC
 ```
+
+### Banco de dados
+
+Em produção o Microsserviço B usa um **Cloud SQL para PostgreSQL** com **IP
+privado apenas** — o banco não tem endereço público; só máquinas dentro da VPC
+`default` o alcançam, pelo peering de *Private Services Access*. É a mesma
+filosofia da regra de firewall do gRPC: nada exposto à internet.
+
+O `database.py` escolhe o backend pelo ambiente: com `PGHOST` definido, conecta
+no PostgreSQL usando as variáveis padrão do libpq (`PGHOST`, `PGPORT`,
+`PGDATABASE`, `PGUSER`, `PGPASSWORD`); sem ele, usa um arquivo SQLite. O SQLite
+fica para desenvolvimento local e para os testes — o Mac está fora da VPC e não
+alcança o IP privado. As consultas são as mesmas nos dois; só o esquema da
+coluna `id` e o driver mudam.
+
+Os segredos ficam separados por VM: o `deploy.sh` envia só as variáveis `PG*`
+para a `vm-server` (em `/opt/sd-gastos-grpc/server.env`, legível só por root) e
+só a chave da LLM para a `vm-client`. Nenhuma das duas recebe o segredo que não
+usa.
 
 **A LLM vive inteiramente no Microsserviço A.** O B só conhece o contrato
 `proto/expenses.proto` — não sabe que existe um modelo de linguagem. Trocar o

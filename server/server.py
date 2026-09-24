@@ -2,20 +2,23 @@
 """Microsserviço B — servidor gRPC.
 
 Não conhece a LLM. Recebe mensagens já estruturadas segundo proto/expenses.proto,
-valida, persiste no SQLite e responde. Se amanhã o cliente trocar o modelo por
+valida, persiste no banco e responde. Se amanhã o cliente trocar o modelo por
 outro modelo, ou por um formulário web, nada aqui muda.
+
+O banco é PostgreSQL quando PGHOST está no ambiente (a VM, falando com o Cloud
+SQL pelo IP privado) e SQLite caso contrário (desenvolvimento local e testes).
 """
 
 import argparse
 import logging
-import sqlite3
+import os
 from concurrent import futures
 
 import grpc
 
 import expenses_pb2
 import expenses_pb2_grpc
-from database import Database, today
+from database import Database, IntegrityError, today
 
 METHOD_LABEL = {
     expenses_pb2.METHOD_UNSPECIFIED: "any",
@@ -120,7 +123,7 @@ class ExpenseService(expenses_pb2_grpc.ExpenseServiceServicer):
                 category=(request.category.strip() or "other"),
                 date=(request.date.strip() or today()),
             )
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             return expenses_pb2.RegisterExpenseResponse(
                 ok=False,
                 message="card %s for %s is not registered" % (
@@ -191,7 +194,10 @@ def _log_rpc(context, method, detail):
 
 
 def create_server(db_path="expenses.db", address="0.0.0.0:50051"):
-    """Devolve (server, port). A porta importa nos testes, que usam a 0."""
+    """Devolve (server, port). A porta importa nos testes, que usam a 0.
+
+    db_path=None usa PostgreSQL; um caminho usa SQLite.
+    """
     database = Database(db_path)
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     expenses_pb2_grpc.add_ExpenseServiceServicer_to_server(
@@ -212,10 +218,16 @@ def main():
         datefmt="%H:%M:%S",
     )
 
-    server, port = create_server(args.database, "0.0.0.0:%d" % args.port)
+    if os.environ.get("PGHOST"):
+        db_path = None
+        db_label = "postgres %s/%s" % (os.environ["PGHOST"],
+                                       os.environ.get("PGDATABASE", ""))
+    else:
+        db_path = db_label = args.database
+
+    server, port = create_server(db_path, "0.0.0.0:%d" % args.port)
     server.start()
-    log.info("gRPC server listening on 0.0.0.0:%d (database: %s)",
-             port, args.database)
+    log.info("gRPC server listening on 0.0.0.0:%d (database: %s)", port, db_label)
     try:
         server.wait_for_termination()
     except KeyboardInterrupt:
