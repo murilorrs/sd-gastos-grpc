@@ -54,6 +54,7 @@ message RegisterCardRequest {
 message RegisterCardResponse {
   bool   ok      = 1;
   string message = 2;
+  bool   created = 3;  // false = o cartão já existia
 }
 
 message ListCardsRequest {}
@@ -61,8 +62,9 @@ message ListCardsResponse {
   repeated Card cards = 1;
 }
 
-// Chamada pelo cliente ANTES de registrar ou consultar, para que um cartão
-// inventado pela LLM nunca chegue a virar uma operação no banco.
+// Chamada ANTES de registrar ou consultar, para que um cartão inventado pela
+// LLM nunca chegue a virar uma operação no banco. Quem chama: o cliente (para
+// oferecer correção ao usuário) e o serviço de Gastos (para decidir se grava).
 message ValidateCardRequest {
   string        name   = 1;
   PaymentMethod method = 2;  // 0 = valida apenas o nome do cartão
@@ -71,6 +73,7 @@ message ValidateCardResponse {
   bool          exists      = 1;
   string        message     = 2;  // legível, pronto para exibir ao usuário
   repeated Card suggestions = 3;  // cartões parecidos, para o usuário corrigir
+  string        name        = 4;  // grafia cadastrada ("nubank" -> "Nubank")
 }
 
 message RegisterExpenseRequest {
@@ -102,10 +105,19 @@ message SummaryResponse {
   double              grand_total = 2;
 }
 
-service ExpenseService {
+// Dois microsserviços, dois contratos. Eles compartilham as mensagens acima,
+// mas cada um é dono dos seus dados: Cartões guarda os cartões, Gastos guarda
+// os gastos, e Gastos só sabe se um cartão existe perguntando a Cartões.
+
+// Microsserviço de Cartões (porta 50052).
+service CardService {
   rpc RegisterCard    (RegisterCardRequest)    returns (RegisterCardResponse);
   rpc ListCards       (ListCardsRequest)       returns (ListCardsResponse);
   rpc ValidateCard    (ValidateCardRequest)    returns (ValidateCardResponse);
+}
+
+// Microsserviço de Gastos (porta 50051). Chama o CardService antes de gravar.
+service ExpenseService {
   rpc RegisterExpense (RegisterExpenseRequest) returns (RegisterExpenseResponse);
 
   // server-streaming: o servidor devolve os gastos um a um, conforme os

@@ -1,45 +1,40 @@
 #!/usr/bin/env python3
-"""Microsserviço A — cliente gRPC com entrada em linguagem natural.
+"""Cliente de terminal com entrada em linguagem natural.
+
+Fala só com o API Gateway, por HTTP/JSON e com um JWT — nunca direto com os
+microsserviços gRPC, que nem aceitam conexões de fora da vm-server.
 
 Fluxo de cada comando digitado:
 
     texto  ->  Claude (nlu.py)  ->  {"action", "args"}
                                         |
-                                        v
-                             ValidateCard (RPC)  <- barra cartão inventado
+                                        v  HTTP/JSON + Authorization: Bearer
+                          GET /cards/validate    <- barra cartão inventado
                                         |
                                         v
-          RegisterExpense / SearchExpenses / SummaryByGroup (RPC)
+              POST /expenses  |  GET /expenses  |  GET /expenses/summary
 
-O servidor não sabe que existe uma LLM: ele só recebe mensagens do
-proto/expenses.proto.
+O Gateway traduz cada chamada para gRPC. Nenhum serviço atrás dele sabe que
+existe uma LLM.
 """
 
 import argparse
+import getpass
+import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import warnings
 from datetime import date
 
-import grpc
-
-import expenses_pb2
-import expenses_pb2_grpc
 import nlu
 import period
 
-METHOD_ENUM = {
-    "": expenses_pb2.METHOD_UNSPECIFIED,
-    "CREDIT": expenses_pb2.CREDIT,
-    "DEBIT": expenses_pb2.DEBIT,
-}
-METHOD_LABEL = {
-    expenses_pb2.METHOD_UNSPECIFIED: "-",
-    expenses_pb2.CREDIT: "credit",
-    expenses_pb2.DEBIT: "debit",
-}
-METHODS = (expenses_pb2.CREDIT, expenses_pb2.DEBIT)
+METHOD_LABEL = {"": "-", None: "-", "CREDIT": "credit", "DEBIT": "debit"}
+METHODS = ("CREDIT", "DEBIT")
 
 HELP = """
 Type commands in Portuguese. Examples:
@@ -55,11 +50,73 @@ Terminal commands:  :help   :cards   :verbose   :bytes   :clear   :quit
 """
 
 
+class GatewayError(Exception):
+    def __init__(self, status, detail):
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
+class Gateway:
+    """Cliente HTTP mínimo do API Gateway, com login e renovação do JWT."""
+
+    def __init__(self, base_url, username, password, show_payload=False):
+        self.base_url = base_url.rstrip("/")
+        self._username = username
+        self._password = password
+        self._token = None
+        self.show_payload = show_payload
+
+    def login(self):
+        data = self.request("POST", "/auth/token",
+                            {"username": self._username, "password": self._password},
+                            auth=False)
+        self._token = data["access_token"]
+
+    def get(self, path, params=None):
+        return self.request("GET", path, params=params)
+
+    def post(self, path, body):
+        return self.request("POST", path, body)
+
+    def request(self, method, path, body=None, params=None, auth=True, retry=True):
+        url = self.base_url + path
+        if params:
+            query = {k: v for k, v in params.items() if v not in ("", None)}
+            if query:
+                url += "?" + urllib.parse.urlencode(query)
+        payload = None if body is None else json.dumps(body).encode()
+
+        if self.show_payload and auth:
+            shown = "%s %s" % (method, url[len(self.base_url):])
+            if payload:
+                shown += "  %d bytes JSON: %s" % (len(payload), payload.decode())
+            print("    [http] %s" % shown)
+
+        req = urllib.request.Request(url, data=payload, method=method)
+        req.add_header("Content-Type", "application/json")
+        if auth:
+            req.add_header("Authorization", "Bearer %s" % self._token)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                return json.loads(response.read() or b"null")
+        except urllib.error.HTTPError as error:
+            # O token vence em uma hora: renova uma vez e repete a chamada, em
+            # vez de derrubar uma sessão longa (a apresentação, por exemplo).
+            if error.code == 401 and auth and retry:
+                self.login()
+                return self.request(method, path, body, params, auth, retry=False)
+            try:
+                detail = json.loads(error.read()).get("detail", error.reason)
+            except ValueError:
+                detail = error.reason
+            raise GatewayError(error.code, detail)
+
+
 class App:
-    def __init__(self, stub, offline=False, show_bytes=False, verbose=False):
-        self.stub = stub
+    def __init__(self, gateway, offline=False, verbose=False):
+        self.gateway = gateway
         self.offline = offline
-        self.show_bytes = show_bytes
         # Desligado por padrão: o uso normal quer ver só o resultado. Ligue com
         # :verbose para a apresentação, onde o comando estruturado e os tempos
         # são justamente o que se quer mostrar.
@@ -75,8 +132,8 @@ class App:
         Primeira das três camadas contra alucinação: o modelo escolhe dentro de
         uma lista real em vez de inventar um nome.
         """
-        response = self.stub.ListCards(expenses_pb2.ListCardsRequest())
-        self.cards = [(c.name, list(c.methods)) for c in response.cards]
+        cards = self.gateway.get("/cards")["cards"]
+        self.cards = [(c["name"], c["methods"]) for c in cards]
 
     def _labeled_cards(self):
         """Formato que o prompt do modelo espera: métodos como texto."""
@@ -88,12 +145,6 @@ class App:
             if registered.lower() == name.lower():
                 return methods
         return []
-
-    def _dump_bytes(self, message, label):
-        if not self.show_bytes:
-            return
-        raw = message.SerializeToString()
-        print("    [%s] %d bytes: %r" % (label, len(raw), raw))
 
     # ---------- card resolution ----------
 
@@ -122,17 +173,17 @@ class App:
     def _resolve_card(self, name, method, for_registration):
         """Garante um par (cartão, método) que existe de verdade.
 
-        Segunda camada contra alucinação: pergunta ao servidor antes de agir.
+        Segunda camada contra alucinação: pergunta ao sistema antes de agir.
         Quando o cartão não confere, em vez de só recusar, oferece ao usuário
         corrigir para um cartão existente ou cadastrar o novo e lançar nele.
 
         Retorna (name, method), ou None se o usuário cancelar.
         """
-        request = expenses_pb2.ValidateCardRequest(name=name, method=method)
-        self._dump_bytes(request, "ValidateCardRequest")
-        validation = self.stub.ValidateCard(request)
+        validation = self.gateway.get("/cards/validate",
+                                      {"name": name, "method": method or None})
 
-        if validation.exists:
+        if validation["exists"]:
+            name = validation["name"] or name
             if method:
                 return name, method
             methods = self._methods_of(name)
@@ -146,7 +197,7 @@ class App:
                 "was %s credit or debit?" % name,
                 [("%s (%s)" % (name, METHOD_LABEL[m]), (name, m)) for m in methods])
 
-        print("  x %s" % validation.message)
+        print("  x %s" % validation["message"])
         choice = self._ask(
             "how do you want to proceed?",
             self._alternatives(name, method, validation, for_registration))
@@ -154,16 +205,17 @@ class App:
             return None
         if len(choice) == 3:  # ("name", method, "create")
             new_name, new_method, _ = choice
-            response = self.stub.RegisterCard(expenses_pb2.RegisterCardRequest(
-                name=new_name, method=new_method))
-            print("  + %s" % response.message)
+            response = self.gateway.post("/cards",
+                                         {"name": new_name, "method": new_method})
+            print("  + %s" % response["message"])
             self.reload_cards()
             return new_name, new_method
         return choice
 
     def _alternatives(self, name, method, validation, for_registration):
         """Monta o menu de recuperação a partir das sugestões do servidor."""
-        base = [(c.name, list(c.methods)) for c in validation.suggestions] or self.cards
+        base = ([(c["name"], c["methods"]) for c in validation["suggestions"]]
+                or self.cards)
         options = [
             ("use %s (%s)" % (registered, METHOD_LABEL[m]), (registered, m))
             for registered, methods in base
@@ -191,14 +243,10 @@ class App:
         if not args.get("cards"):
             print("  x missing card name — try: cadastra o Nubank no crédito")
             return
-        for item in args.get("cards", []):
-            request = expenses_pb2.RegisterCardRequest(
-                name=item.get("name", ""),
-                method=METHOD_ENUM.get(item.get("method", ""), 0),
-            )
-            self._dump_bytes(request, "RegisterCardRequest")
-            response = self.stub.RegisterCard(request)
-            print("  + %s" % response.message)
+        for item in args["cards"]:
+            response = self.gateway.post("/cards", {"name": item.get("name", ""),
+                                                    "method": item.get("method", "")})
+            print("  + %s" % response["message"])
         self.reload_cards()
 
     def list_cards(self, args):
@@ -209,8 +257,9 @@ class App:
             print("  %-14s %s" % (name, ", ".join(METHOD_LABEL[m] for m in methods)))
 
     def register_expense(self, args):
-        # Checagens locais antes de qualquer RPC: erram rápido, respondem numa
-        # linha e não gastam uma ida ao servidor para dizer o óbvio.
+        # Checagens locais antes de qualquer chamada: erram rápido, respondem
+        # numa linha e não gastam uma ida ao servidor para dizer o óbvio. O
+        # Gateway valida tudo de novo — ele não pode confiar em quem chama.
         amount = float(args.get("amount") or 0)
         if amount <= 0:
             print("  x missing amount — say how much it cost")
@@ -219,7 +268,7 @@ class App:
             print("  x missing product — say what you bought")
             return
 
-        method = METHOD_ENUM.get(args.get("method", ""), 0)
+        method = args.get("method") or ""
         card = args.get("card", "")
         if not card:
             print("  x missing card — try: no crédito do Nubank")
@@ -234,69 +283,61 @@ class App:
         # do prompt. Aceitar os dois campos evita datar o gasto como hoje por
         # causa de um nome de campo — um erro que passaria despercebido.
         label = args.get("date_label") or args.get("period")
-        request = expenses_pb2.RegisterExpenseRequest(
-            product=args.get("product", ""),
-            description=args.get("description", ""),
-            amount=amount,
-            card=card,
-            method=method,
-            category=args.get("category", ""),
-            date=args.get("date") or period.transaction_date(label),
-        )
-        self._dump_bytes(request, "RegisterExpenseRequest")
-        response = self.stub.RegisterExpense(request)
-        if not response.ok:
-            print("  x %s" % response.message)
-            return
-        e = response.expense
+        body = {
+            "product": args.get("product", ""),
+            "description": args.get("description", ""),
+            "amount": amount,
+            "card": card,
+            "method": method,
+            "category": args.get("category") or "other",
+            "date": args.get("date") or period.transaction_date(label),
+        }
+        e = self.gateway.post("/expenses", body)["expense"]
         print("  + #%d  %s  %.2f  %s/%s  [%s]  %s" % (
-            e.id, e.product, e.amount, e.card, METHOD_LABEL[e.method],
-            e.category, e.date))
+            e["id"], e["product"], e["amount"], e["card"],
+            METHOD_LABEL[e["method"]], e["category"], e["date"]))
+
+    def _resolved_filter(self, args, what):
+        """Filtro da busca/resumo, com o cartão conferido. None = cancelado."""
+        filters = self._build_filter(args)
+        if filters["card"]:
+            resolved = self._resolve_card(filters["card"], filters["method"],
+                                          for_registration=False)
+            if resolved is None:
+                print("  %s cancelled" % what)
+                return None
+            filters["card"], filters["method"] = resolved
+        return filters
 
     def search_expenses(self, args):
-        filters = self._build_filter(args)
-        if filters.card:
-            resolved = self._resolve_card(
-                filters.card, filters.method, for_registration=False)
-            if resolved is None:
-                print("  search cancelled")
-                return
-            filters.card, filters.method = resolved
-        self._dump_bytes(filters, "Filter")
-
-        total = 0.0
-        count = 0
-        # Server-streaming: cada gasto chega assim que o servidor o encontra.
-        for e in self.stub.SearchExpenses(filters):
+        filters = self._resolved_filter(args, "search")
+        if filters is None:
+            return
+        # Entre o Gateway e o serviço de Gastos isto é um stream gRPC; o
+        # Gateway junta os itens e devolve uma lista JSON.
+        found = self.gateway.get("/expenses", filters)["expenses"]
+        for e in found:
             print("  #%-4d %-24s %10.2f  %-10s %-7s %-11s %s" % (
-                e.id, e.product[:24], e.amount, e.card,
-                METHOD_LABEL[e.method], e.category, e.date))
-            total += e.amount
-            count += 1
-        if count:
-            print("  %s\n  %d expense(s), total %.2f" % ("-" * 74, count, total))
+                e["id"], e["product"][:24], e["amount"], e["card"],
+                METHOD_LABEL[e["method"]], e["category"], e["date"]))
+        if found:
+            print("  %s\n  %d expense(s), total %.2f" % (
+                "-" * 74, len(found), sum(e["amount"] for e in found)))
         else:
             print("  no expenses match those filters")
 
     def summary(self, args):
-        filters = self._build_filter(args)
-        if filters.card:
-            resolved = self._resolve_card(
-                filters.card, filters.method, for_registration=False)
-            if resolved is None:
-                print("  summary cancelled")
-                return
-            filters.card, filters.method = resolved
-        request = expenses_pb2.SummaryRequest(
-            group_by=args.get("group_by") or "category", filter=filters)
-        self._dump_bytes(request, "SummaryRequest")
-        response = self.stub.SummaryByGroup(request)
-        if not response.totals:
+        filters = self._resolved_filter(args, "summary")
+        if filters is None:
+            return
+        filters["group_by"] = args.get("group_by") or "category"
+        response = self.gateway.get("/expenses/summary", filters)
+        if not response["totals"]:
             print("  no expenses match those filters")
             return
-        for t in response.totals:
-            print("  %-16s %11.2f  (%d)" % (t.key, t.total, t.count))
-        print("  %s\n  %-16s %11.2f" % ("-" * 42, "TOTAL", response.grand_total))
+        for t in response["totals"]:
+            print("  %-16s %11.2f  (%d)" % (t["key"], t["total"], t["count"]))
+        print("  %s\n  %-16s %11.2f" % ("-" * 42, "TOTAL", response["grand_total"]))
 
     def unknown(self, args):
         print("  ? %s" % args.get("reason", "command not understood"))
@@ -304,13 +345,13 @@ class App:
 
     def _build_filter(self, args):
         start, end = period.resolve(args.get("period", ""))
-        return expenses_pb2.Filter(
-            card=args.get("card", ""),
-            method=METHOD_ENUM.get(args.get("method", ""), 0),
-            category=args.get("category", ""),
-            start_date=args.get("start_date") or start,
-            end_date=args.get("end_date") or end,
-        )
+        return {
+            "card": args.get("card", ""),
+            "method": args.get("method") or "",
+            "category": args.get("category", ""),
+            "start_date": args.get("start_date") or start,
+            "end_date": args.get("end_date") or end,
+        }
 
     # ---------- main loop ----------
 
@@ -349,19 +390,21 @@ class App:
         started = time.perf_counter()
         try:
             handler(args)
-        except grpc.RpcError as error:
-            print("  x server error [%s]: %s" % (error.code().name, error.details()))
-        grpc_seconds = time.perf_counter() - started
+        except GatewayError as error:
+            print("  x [%d] %s" % (error.status, error.detail))
+        except urllib.error.URLError as error:
+            print("  x gateway unreachable: %s" % error.reason)
+        gateway_seconds = time.perf_counter() - started
 
-        # A comparação que vale a pena mostrar na apresentação: o gRPC não é o
-        # gargalo — a chamada à LLM é ordens de magnitude mais lenta.
+        # A comparação que vale a pena mostrar na apresentação: HTTP + gRPC
+        # juntos ainda são muito mais rápidos que a chamada à LLM.
         if self.verbose:
-            print("  . nlu %.0f ms . grpc %.0f ms" % (
-                nlu_seconds * 1000, grpc_seconds * 1000))
+            print("  . nlu %.0f ms . gateway %.0f ms" % (
+                nlu_seconds * 1000, gateway_seconds * 1000))
 
 
 def repl(app, address):
-    print("gRPC client connected to %s%s" % (
+    print("connected to gateway %s%s" % (
         address, "  [offline mode]" if app.offline else ""))
     print(HELP)
     while True:
@@ -391,8 +434,8 @@ def repl(app, address):
             print("  verbose: %s" % ("on" if app.verbose else "off"))
             continue
         if text == ":bytes":
-            app.show_bytes = not app.show_bytes
-            print("  byte dump: %s" % ("on" if app.show_bytes else "off"))
+            app.gateway.show_payload = not app.gateway.show_payload
+            print("  payload dump: %s" % ("on" if app.gateway.show_payload else "off"))
             continue
         app.run_command(text)
 
@@ -419,37 +462,41 @@ def load_env():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Microservice A - gRPC client")
-    parser.add_argument("--server", default="localhost:50051",
-                        help="host:port of Microservice B")
+    silence_known_warnings()
+    load_env()
+
+    parser = argparse.ArgumentParser(description="Terminal client for the API gateway")
+    parser.add_argument("--gateway",
+                        default=os.environ.get("GATEWAY_URL", "http://localhost:8000"),
+                        help="base URL of the API gateway")
     parser.add_argument("--offline", action="store_true",
                         help="interpret with local rules, without calling the LLM")
     parser.add_argument("--verbose", action="store_true",
                         help="show the structured command and the timings")
     parser.add_argument("--bytes", action="store_true",
-                        help="print the serialized protobuf of each request")
+                        help="print the JSON sent to the gateway on each request")
     parser.add_argument("--command", help="run a single command and exit")
     args = parser.parse_args()
 
-    silence_known_warnings()
-    load_env()
-    channel = grpc.insecure_channel(args.server)
+    username = os.environ.get("GATEWAY_USER") or input("gateway user: ")
+    password = os.environ.get("GATEWAY_PASSWORD") or getpass.getpass("password: ")
+    gateway = Gateway(args.gateway, username, password, show_payload=args.bytes)
     try:
-        # Falha rápido e com mensagem clara se o servidor não estiver de pé.
-        grpc.channel_ready_future(channel).result(timeout=5)
-    except grpc.FutureTimeoutError:
-        print("could not connect to %s" % args.server, file=sys.stderr)
-        print("is Microservice B running? is port 50051 open?", file=sys.stderr)
+        gateway.login()
+        app = App(gateway, offline=args.offline, verbose=args.verbose)
+    except GatewayError as error:
+        print("login failed [%d]: %s" % (error.status, error.detail), file=sys.stderr)
+        return 1
+    except urllib.error.URLError as error:
+        print("could not reach the gateway at %s (%s)" % (args.gateway, error.reason),
+              file=sys.stderr)
+        print("is the gateway running? is port 8000 open?", file=sys.stderr)
         return 1
 
-    stub = expenses_pb2_grpc.ExpenseServiceStub(channel)
-    app = App(stub, offline=args.offline, show_bytes=args.bytes,
-              verbose=args.verbose)
     if args.command:
         app.run_command(args.command)
     else:
-        repl(app, args.server)
-    channel.close()
+        repl(app, args.gateway)
     return 0
 
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Instala e sobe os serviços nas duas VMs.
+# Instala e sobe o sistema nas duas VMs.
 #
-# As duas clonam o MESMO repositório; o que muda é qual processo cada uma roda.
-# A vm-server sobe o server.py como serviço do systemd; a vm-client só fica
-# preparada, porque o cliente é um REPL que você roda à mão na apresentação.
+# As duas clonam o MESMO repositório; o que muda é o que cada uma roda:
+#   vm-server: Gateway FastAPI (:8000) + microsserviços de Cartões e de Gastos
+#              (gRPC, só em 127.0.0.1), todos como serviços do systemd
+#   vm-client: o cliente de terminal, que você roda à mão na apresentação
 #
 #   bash infra/deploy.sh
 set -euo pipefail
@@ -13,20 +14,24 @@ ROOT="$(cd .. && pwd)"
 # Os temporários abaixo contêm segredos: apaga mesmo se o script falhar no meio.
 trap 'rm -f "$ROOT/.server.env.tmp" "$ROOT/.client.env.tmp"' EXIT
 
+GATEWAY_PORT=8000
+INTERNAL_IP=$(gcloud compute instances describe "$VM_SERVER" --zone="$ZONE" \
+  --format="get(networkInterfaces[0].networkIP)")
+
 # ---------------------------------------------------------------------------
-echo "==> $VM_SERVER (Microservice B)"
+echo "==> $VM_SERVER (gateway + cards + expenses)"
 # ---------------------------------------------------------------------------
 # O .env local guarda os segredos dos dois lados. Cada VM recebe só a sua
-# parte: as variáveis PG* (banco) vão para a vm-server, o resto (chave da LLM)
-# para a vm-client. A vm-client alcança o banco pela VPC, então dar a senha a
-# ela seria acesso sem necessidade.
-if [ -f "$ROOT/.env" ] && grep -q '^PG' "$ROOT/.env"; then
-  echo "==> copying database credentials to $VM_SERVER"
-  grep '^PG' "$ROOT/.env" > "$ROOT/.server.env.tmp"
+# parte. A vm-server recebe o banco (PG*) e o que o Gateway usa para emitir e
+# conferir tokens (JWT_SECRET, GATEWAY_USER, GATEWAY_PASSWORD).
+SERVER_VARS='^(PG[A-Z]*|JWT_SECRET|GATEWAY_USER|GATEWAY_PASSWORD)='
+if [ -f "$ROOT/.env" ] && grep -qE "$SERVER_VARS" "$ROOT/.env"; then
+  echo "==> copying server secrets to $VM_SERVER"
+  grep -E "$SERVER_VARS" "$ROOT/.env" > "$ROOT/.server.env.tmp"
   gcloud compute scp "$ROOT/.server.env.tmp" "$VM_SERVER:/tmp/server.env" --zone="$ZONE"
   rm -f "$ROOT/.server.env.tmp"
 else
-  echo "!! no PG* variables in $ROOT/.env; the server will use SQLite"
+  echo "!! no server variables in $ROOT/.env; SQLite and a random JWT secret will be used"
 fi
 
 SERVER_SCRIPT=$(cat <<EOF
@@ -42,27 +47,28 @@ else
 fi
 cd $TARGET_DIR
 [ -d .venv ] || python3 -m venv .venv
-.venv/bin/pip install -q -r server/requirements.txt
-.venv/bin/python -m grpc_tools.protoc -I proto \
-  --python_out=server --grpc_python_out=server proto/expenses.proto
+.venv/bin/pip install -q -r server/requirements.txt -r gateway/requirements.txt
+PATH=$TARGET_DIR/.venv/bin:\$PATH bash generate_stubs.sh
 if [ -f /tmp/server.env ]; then
-  # Só root lê: o arquivo tem a senha do banco.
+  # Só root lê: o arquivo tem a senha do banco e o segredo do JWT.
   sudo install -m 600 -o root /tmp/server.env $TARGET_DIR/server.env
   rm -f /tmp/server.env
 fi
-sudo cp infra/expenses.service /etc/systemd/system/expenses.service
+for unit in cards expenses gateway; do
+  sudo cp infra/\$unit.service /etc/systemd/system/\$unit.service
+done
 sudo systemctl daemon-reload
-sudo systemctl enable expenses
-sudo systemctl restart expenses
-sleep 1
-systemctl is-active expenses
+sudo systemctl enable cards expenses gateway
+sudo systemctl restart cards expenses gateway
+sleep 2
+systemctl is-active cards expenses gateway
 EOF
 )
 gcloud compute ssh "$VM_SERVER" --zone="$ZONE" --command "$SERVER_SCRIPT"
 
 # ---------------------------------------------------------------------------
 echo
-echo "==> $VM_CLIENT (Microservice A)"
+echo "==> $VM_CLIENT (terminal client)"
 # ---------------------------------------------------------------------------
 CLIENT_SCRIPT=$(cat <<EOF
 set -euo pipefail
@@ -78,39 +84,34 @@ fi
 cd $TARGET_DIR
 [ -d .venv ] || python3 -m venv .venv
 .venv/bin/pip install -q -r client/requirements.txt
-.venv/bin/python -m grpc_tools.protoc -I proto \
-  --python_out=client --grpc_python_out=client proto/expenses.proto
 EOF
 )
 gcloud compute ssh "$VM_CLIENT" --zone="$ZONE" --command "$CLIENT_SCRIPT"
 
-# A chave da API vai só para a vm-client. A vm-server não a tem — mesmo que
-# alguém rodasse o cliente lá por engano, ele não funcionaria. As variáveis PG*
-# ficam de fora pelo mesmo motivo, no sentido inverso.
+# A vm-client recebe a chave da LLM, o login do Gateway e o endereço dele —
+# nunca a senha do banco nem o segredo do JWT: ela só fala com o Gateway.
 if [ -f "$ROOT/.env" ]; then
-  echo "==> copying .env (without PG* variables) to $VM_CLIENT"
-  grep -v '^PG' "$ROOT/.env" > "$ROOT/.client.env.tmp"
+  echo "==> copying client settings to $VM_CLIENT"
+  grep -vE '^(PG[A-Z]*|JWT_SECRET|GATEWAY_URL)=' "$ROOT/.env" > "$ROOT/.client.env.tmp"
+  echo "GATEWAY_URL=http://$INTERNAL_IP:$GATEWAY_PORT" >> "$ROOT/.client.env.tmp"
   gcloud compute scp "$ROOT/.client.env.tmp" "$VM_CLIENT:$TARGET_DIR/.env" --zone="$ZONE"
   rm -f "$ROOT/.client.env.tmp"
 else
-  echo "!! $ROOT/.env not found; the client on the VM will only work with --offline"
+  echo "!! $ROOT/.env not found; the client on the VM will ask for the login"
 fi
-
-INTERNAL_IP=$(gcloud compute instances describe "$VM_SERVER" --zone="$ZONE" \
-  --format="get(networkInterfaces[0].networkIP)")
 
 cat <<END
 
 Deploy finished.
 
-  Server internal IP: $INTERNAL_IP
+  Gateway: http://$INTERNAL_IP:$GATEWAY_PORT  (docs em /docs)
 
 To use the system:
 
   gcloud compute ssh $VM_CLIENT --zone=$ZONE
-  cd $TARGET_DIR && .venv/bin/python client/client.py --server $INTERNAL_IP:$PORT
+  cd $TARGET_DIR && .venv/bin/python client/client.py --verbose
 
-To watch the server logs:
+To watch the server logs (gateway and both microservices together):
 
-  gcloud compute ssh $VM_SERVER --zone=$ZONE --command "sudo journalctl -u expenses -f"
+  gcloud compute ssh $VM_SERVER --zone=$ZONE --command "sudo journalctl -u gateway -u cards -u expenses -f"
 END

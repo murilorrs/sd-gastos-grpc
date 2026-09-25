@@ -1,16 +1,16 @@
 [Unit]
-Description=Microservice B - gRPC expense server
-After=network-online.target
+Description=Expenses microservice (gRPC, 127.0.0.1:50051)
+After=network-online.target cards.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/sd-gastos-grpc/server
 # Credenciais do Cloud SQL (PGHOST, PGUSER, PGPASSWORD...), copiadas pelo
-# deploy.sh. O "-" torna o arquivo opcional: sem ele, o servidor usa o SQLite
+# deploy.sh. O "-" torna o arquivo opcional: sem ele, o serviço usa o SQLite
 # do --database abaixo.
 EnvironmentFile=-/opt/sd-gastos-grpc/server.env
-ExecStart=/opt/sd-gastos-grpc/.venv/bin/python server.py --database /opt/sd-gastos-grpc/expenses.db
+ExecStart=/opt/sd-gastos-grpc/.venv/bin/python expenses_service.py --database /opt/sd-gastos-grpc/data/expenses.db
 Restart=always
 RestartSec=3
 # Roda como root para não depender de qual usuário o gcloud criou na VM.

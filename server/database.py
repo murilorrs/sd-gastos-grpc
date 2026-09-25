@@ -1,15 +1,20 @@
-"""Persistência do Microsserviço B: cartões e gastos em PostgreSQL ou SQLite.
+"""Persistência dos microsserviços: um store para cada um.
+
+Cada serviço é dono de uma tabela e só toca a sua. O de Gastos não lê a tabela
+de cartões — quando precisa saber se um cartão existe, pergunta ao serviço de
+Cartões via gRPC. Por isso não há chave estrangeira entre as tabelas: ela
+acoplaria os dois serviços por baixo do contrato.
 
 Na nuvem o banco é um Cloud SQL (PostgreSQL) com IP privado; localmente e nos
-testes é um SQLite, que não exige servidor nem rede. As consultas são as mesmas
-nos dois — só o esquema da tabela e o driver mudam.
+testes é SQLite, que não exige servidor nem rede. As consultas são as mesmas
+nos dois — só a coluna de id e o driver mudam.
 
-Esta camada não sabe nada de gRPC — recebe e devolve tipos Python. O server.py
-é quem traduz para as mensagens do protobuf.
+Esta camada não sabe nada de gRPC — recebe e devolve tipos Python.
 """
 
 import datetime
 import difflib
+import os
 import sqlite3
 import threading
 
@@ -18,35 +23,8 @@ import threading
 # no SQL seria injeção.
 VALID_GROUPS = ("category", "card", "method")
 
-# A única diferença de esquema entre os dois bancos é a coluna de id
-# autoincrementada. DOUBLE PRECISION vale nos dois (no SQLite vira REAL; no
-# Postgres, REAL teria só precisão simples e 21.90 viraria 21.899999).
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS cards (
-    name   TEXT NOT NULL,
-    method INTEGER NOT NULL,
-    PRIMARY KEY (name, method)
-);
-CREATE TABLE IF NOT EXISTS expenses (
-    id          {id_column},
-    product     TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    amount      DOUBLE PRECISION NOT NULL,
-    card        TEXT NOT NULL,
-    method      INTEGER NOT NULL,
-    category    TEXT NOT NULL,
-    date        TEXT NOT NULL,
-    created_at  TEXT NOT NULL,
-    FOREIGN KEY (card, method) REFERENCES cards (name, method)
-)
-"""
 
-
-class IntegrityError(Exception):
-    """Violação de chave estrangeira, qualquer que seja o banco por baixo."""
-
-
-class Database:
+class _Store:
     """Uma conexão compartilhada, protegida por lock.
 
     O servidor gRPC atende em várias threads (ThreadPoolExecutor). O lock
@@ -58,17 +36,20 @@ class Database:
     outro valor é o caminho de um arquivo SQLite (":memory:" nos testes).
     """
 
-    def __init__(self, path="expenses.db"):
+    SCHEMA = ()  # instruções CREATE; {id_column} é trocado conforme o banco
+
+    def __init__(self, path):
         self._lock = threading.Lock()
         self._path = path
         self._postgres = path is None
+        if not self._postgres and path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self._connect()
         id_column = ("SERIAL PRIMARY KEY" if self._postgres
                      else "INTEGER PRIMARY KEY AUTOINCREMENT")
         with self._lock:
-            for statement in _SCHEMA.format(id_column=id_column).split(";"):
-                if statement.strip():
-                    self._run(statement)
+            for statement in self.SCHEMA:
+                self._run(statement.format(id_column=id_column))
 
     def _connect(self):
         if self._postgres:
@@ -81,8 +62,6 @@ class Database:
             self._con = sqlite3.connect(self._path, check_same_thread=False,
                                         isolation_level=None)
             self._con.row_factory = sqlite3.Row
-            # Sem este PRAGMA o SQLite ignora chaves estrangeiras silenciosamente.
-            self._con.execute("PRAGMA foreign_keys = ON")
 
     def close(self):
         self._con.close()
@@ -93,39 +72,47 @@ class Database:
         As consultas usam `?` como marcador; o psycopg espera `%s`. Nenhuma
         consulta deste arquivo tem `?` literal, então a troca é segura.
         """
-        if self._postgres:
-            import psycopg
-            sql = sql.replace("?", "%s")
-            try:
-                return self._con.execute(sql, params)
-            except psycopg.errors.IntegrityError as error:
-                raise IntegrityError(str(error)) from error
-            except psycopg.OperationalError:
-                # Conexão perdida (manutenção ou reinício do Cloud SQL). Sem
-                # isto, toda chamada falharia até alguém reiniciar o servidor.
-                self._connect()
-                return self._con.execute(sql, params)
+        if not self._postgres:
+            return self._con.execute(sql, params)
+        import psycopg
+        sql = sql.replace("?", "%s")
         try:
             return self._con.execute(sql, params)
-        except sqlite3.IntegrityError as error:
-            raise IntegrityError(str(error)) from error
+        except psycopg.OperationalError:
+            # Conexão perdida (manutenção ou reinício do Cloud SQL). Sem isto,
+            # toda chamada falharia até alguém reiniciar o serviço.
+            self._connect()
+            return self._con.execute(sql, params)
 
-    # ---------- cards ----------
-    #
-    # O nome do cartão é comparado sem diferenciar maiúsculas ("nubank" e
-    # "Nubank" são o mesmo cartão). LOWER() nas duas pontas faz isso nos dois
-    # bancos; a grafia gravada é a do primeiro cadastro.
 
-    def _canonical_name(self, name):
-        row = self._run(
-            "SELECT name FROM cards WHERE LOWER(name) = LOWER(?) LIMIT 1", (name,)
-        ).fetchone()
-        return row["name"] if row else name
+class CardStore(_Store):
+    """Dados do microsserviço de Cartões.
+
+    O nome do cartão é comparado sem diferenciar maiúsculas ("nubank" e
+    "Nubank" são o mesmo cartão). LOWER() nas duas pontas faz isso nos dois
+    bancos; a grafia gravada é a do primeiro cadastro.
+    """
+
+    SCHEMA = ("""
+        CREATE TABLE IF NOT EXISTS cards (
+            name   TEXT NOT NULL,
+            method INTEGER NOT NULL,
+            PRIMARY KEY (name, method)
+        )""",)
+
+    def canonical_name(self, name):
+        """A grafia cadastrada de um cartão, ou None se o nome não existe."""
+        with self._lock:
+            row = self._run(
+                "SELECT name FROM cards WHERE LOWER(name) = LOWER(?) LIMIT 1",
+                (name,),
+            ).fetchone()
+        return row["name"] if row else None
 
     def register_card(self, name, method):
         """Cadastra (nome, método). True se era novo, False se já existia."""
+        name = self.canonical_name(name) or name
         with self._lock:
-            name = self._canonical_name(name)
             cursor = self._run(
                 "INSERT INTO cards (name, method) VALUES (?, ?)"
                 " ON CONFLICT DO NOTHING",
@@ -163,19 +150,42 @@ class Database:
         )
         return [(n, m) for n, m in cards if n in close]
 
-    # ---------- expenses ----------
+
+class ExpenseStore(_Store):
+    """Dados do microsserviço de Gastos."""
+
+    SCHEMA = ("""
+        CREATE TABLE IF NOT EXISTS expenses (
+            id          {id_column},
+            product     TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            amount      DOUBLE PRECISION NOT NULL,
+            card        TEXT NOT NULL,
+            method      INTEGER NOT NULL,
+            category    TEXT NOT NULL,
+            date        TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        )""",)
+
+    def __init__(self, path):
+        super().__init__(path)
+        if self._postgres:
+            # Até o Trabalho 1 havia uma chave estrangeira para cards, quando os
+            # dois serviços eram um só. Quem tem a tabela antiga perde a
+            # restrição aqui; a checagem agora é a chamada gRPC ao CardService.
+            with self._lock:
+                self._run("ALTER TABLE expenses"
+                          " DROP CONSTRAINT IF EXISTS expenses_card_method_fkey")
 
     def insert_expense(self, product, description, amount, card, method,
                        category, date):
         """Insere e devolve o gasto completo (com id).
 
-        Levanta IntegrityError se (card, method) não estiver cadastrado — é a
-        chave estrangeira agindo como última barreira contra um cartão
-        inventado pela LLM.
+        Não confere o cartão: o serviço chama o CardService antes de chegar
+        aqui, porque esta tabela não conhece os cartões.
         """
         created_at = datetime.datetime.now().isoformat(timespec="seconds")
         with self._lock:
-            card = self._canonical_name(card)
             row = self._run(
                 "INSERT INTO expenses"
                 " (product, description, amount, card, method, category, date, created_at)"

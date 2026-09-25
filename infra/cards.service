@@ -1,0 +1,18 @@
+[Unit]
+Description=Cards microservice (gRPC, 127.0.0.1:50052)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sd-gastos-grpc/server
+EnvironmentFile=-/opt/sd-gastos-grpc/server.env
+ExecStart=/opt/sd-gastos-grpc/.venv/bin/python cards_service.py --database /opt/sd-gastos-grpc/data/cards.db
+Restart=always
+RestartSec=3
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

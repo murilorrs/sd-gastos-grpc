@@ -2,14 +2,15 @@
 
 > **Integrantes:** Murilo Rodrigues, (preencher), (preencher)
 
-Trabalho 1 de Sistemas Distribuídos — comunicação interna entre dois
-microsserviços via **gRPC / Protocol Buffers**, rodando em duas VMs no **Google
-Cloud Platform**, com regra de firewall VPC restringindo a porta de comunicação.
+Trabalhos 1 e 2 de Sistemas Distribuídos — um sistema de controle de gastos com
+**API Gateway (FastAPI)**, **dois microsserviços gRPC** e **PostgreSQL** (Cloud
+SQL), rodando em duas VMs no **Google Cloud Platform**.
 
 O usuário descreve um gasto em português ("gastei 89 reais num teclado no
-crédito do Nubank"). O **Microsserviço A** usa a API da Anthropic para transformar isso
-num comando estruturado e o envia por gRPC. O **Microsserviço B** valida,
-persiste num PostgreSQL gerenciado (Cloud SQL) e responde.
+crédito do Nubank"). O cliente usa a API da Anthropic para transformar a frase
+num comando estruturado e o envia ao **Gateway** por HTTP/JSON, com um token
+JWT. O Gateway valida, traduz para **gRPC/protobuf** e despacha para o
+microsserviço dono do dado — **Cartões** ou **Gastos** — que persiste no banco.
 
 > Código, identificadores e mensagens em inglês; comentários em português. A
 > entrada em linguagem natural é em português, que é o domínio da aplicação.
@@ -17,63 +18,116 @@ persiste num PostgreSQL gerenciado (Cloud SQL) e responde.
 ## Arquitetura
 
 ```
-                  vm-client                            vm-server
-              (tag: grpc-client)                  (tag: grpc-server)
-        ┌───────────────────────────┐        ┌──────────────────────────┐
-        │   Microservice A          │        │   Microservice B         │
-        │                           │        │                          │
- texto  │   client.py               │        │   server.py              │
- ─────► │     └─ nlu.py ──► Claude  │        │     └─ database.py ──────┼──┐
-        │     └─ period.py          │        │                          │  │
-        │                           │        │                          │  │
-        │        gRPC stub ─────────┼───────►│ ── gRPC server :50051    │  │
-        └───────────────────────────┘        └──────────────────────────┘  │
-             10.128.0.3                            10.128.0.2              │
-                              └──── VPC default ────┘                      │
-                          firewall: tcp:50051, only 10.128.0.0/9,          │
-                                only for tag grpc-server                   │
-                                                                           │
-                                   Cloud SQL (PostgreSQL) ◄────────────────┘
-                                   banco-aula-sd · 10.115.48.3:5432
-                                   IP privado apenas, via peering da VPC
+              vm-client (10.128.0.3)                     vm-server (10.128.0.2)
+        ┌──────────────────────────────┐   HTTP/JSON  ┌────────────────────────────────┐
+ texto  │ client.py                    │   + JWT      │ API Gateway (FastAPI)          │
+ ─────► │   └─ nlu.py ──► Claude       ├─────────────►│ 0.0.0.0:8000                   │
+        │   └─ period.py               │              │   valida (400) · JWT (401)     │
+        └──────────────────────────────┘              │   JSON ──► protobuf            │
+                                                      │        │ gRPC        │ gRPC    │
+                                  firewall:           │        ▼             ▼         │
+                        tcp:8000 · só 10.128.0.0/9    │  Cartões        Gastos         │
+                        · só tag grpc-server          │  127.0.0.1:50052  127.0.0.1:50051
+                                                      │        ▲    gRPC     │         │
+                                                      │        └─────────────┘         │
+                                                      └────────┬───────────────┬───────┘
+                                                               │  cards        │ expenses
+                                                               ▼               ▼
+                                                      Cloud SQL (PostgreSQL) banco-aula-sd
+                                                      10.115.48.3:5432 · IP privado, via peering
 ```
+
+Quatro saltos, cada um com um protocolo e um motivo:
+
+1. **Cliente → Gateway: HTTP/JSON com JWT.** É a única porta de entrada. O
+   Gateway escuta em `0.0.0.0:8000`; todo o resto da `vm-server` escuta só em
+   `127.0.0.1`.
+2. **Gateway → microsserviços: gRPC/protobuf.** O Gateway desserializa o JSON,
+   valida, e serializa em protobuf para o serviço dono do dado.
+3. **Gastos → Cartões: gRPC.** Antes de gravar um gasto, o serviço de Gastos
+   pergunta ao de Cartões se o cartão existe. É a comunicação entre
+   microsserviços do sistema.
+4. **Microsserviços → Cloud SQL: PostgreSQL**, pela rede privada. Cada serviço
+   só toca a sua tabela.
+
+**Por que os serviços gRPC escutam só em 127.0.0.1.** O enunciado exige que o
+cliente nunca fale direto com os microsserviços. Firewall não garantiria isso: a
+regra `default-allow-internal` do GCP libera todas as portas entre VMs da VPC.
+Escutando só na interface local, os serviços são inalcançáveis de fora da
+`vm-server` — qualquer que seja a regra de firewall.
+
+**A LLM vive no cliente.** O Gateway e os microsserviços recebem JSON e
+protobuf já estruturados; nenhum deles sabe que existe um modelo de linguagem.
 
 ### Banco de dados
 
-Em produção o Microsserviço B usa um **Cloud SQL para PostgreSQL** com **IP
+Em produção os microsserviços usam um **Cloud SQL para PostgreSQL** com **IP
 privado apenas** — o banco não tem endereço público; só máquinas dentro da VPC
-`default` o alcançam, pelo peering de *Private Services Access*. É a mesma
-filosofia da regra de firewall do gRPC: nada exposto à internet.
+`default` o alcançam, pelo peering de *Private Services Access*.
+
+Cada microsserviço é dono de uma tabela: Cartões tem `cards`, Gastos tem
+`expenses`. Não há chave estrangeira entre elas — ela acoplaria os dois
+serviços por baixo do contrato. O serviço de Gastos só sabe se um cartão existe
+perguntando ao de Cartões via gRPC, e grava com a grafia que ele devolve.
 
 O `database.py` escolhe o backend pelo ambiente: com `PGHOST` definido, conecta
 no PostgreSQL usando as variáveis padrão do libpq (`PGHOST`, `PGPORT`,
-`PGDATABASE`, `PGUSER`, `PGPASSWORD`); sem ele, usa um arquivo SQLite. O SQLite
-fica para desenvolvimento local e para os testes — o Mac está fora da VPC e não
-alcança o IP privado. As consultas são as mesmas nos dois; só o esquema da
-coluna `id` e o driver mudam.
+`PGDATABASE`, `PGUSER`, `PGPASSWORD`); sem ele, usa arquivos SQLite em `data/`.
+O SQLite fica para desenvolvimento local e para os testes — o Mac está fora da
+VPC e não alcança o IP privado. As consultas são as mesmas nos dois.
 
-Os segredos ficam separados por VM: o `deploy.sh` envia só as variáveis `PG*`
-para a `vm-server` (em `/opt/sd-gastos-grpc/server.env`, legível só por root) e
-só a chave da LLM para a `vm-client`. Nenhuma das duas recebe o segredo que não
-usa.
+Os segredos ficam separados por VM. O `deploy.sh` envia para a `vm-server` a
+senha do banco e o segredo do JWT (em `/opt/sd-gastos-grpc/server.env`,
+legível só por root), e para a `vm-client` a chave da LLM e o login do
+Gateway. Nenhuma das duas recebe o segredo que não usa.
 
-**A LLM vive inteiramente no Microsserviço A.** O B só conhece o contrato
-`proto/expenses.proto` — não sabe que existe um modelo de linguagem. Trocar o
-modelo por outro, ou por um formulário web, não muda uma linha do
-servidor.
+## API Gateway
+
+| Método e rota | Microsserviço | Sucesso |
+|---|---|---|
+| `POST /auth/token` | — (emite o JWT) | 200 |
+| `GET /cards` | Cartões · `ListCards` | 200 |
+| `POST /cards` | Cartões · `RegisterCard` | **201**, ou 200 se já existia |
+| `GET /cards/validate` | Cartões · `ValidateCard` | 200 |
+| `POST /expenses` | Gastos · `RegisterExpense` (→ Cartões · `ValidateCard`) | **201** |
+| `GET /expenses` | Gastos · `SearchExpenses` (stream) | 200 |
+| `GET /expenses/summary` | Gastos · `SummaryByGroup` | 200 |
+| `GET /health` | — | 200 |
+
+Documentação interativa, gerada pelo FastAPI, em `http://<gateway>:8000/docs`.
+
+**Autenticação.** Toda rota exceto `/auth/token` e `/health` exige
+`Authorization: Bearer <token>`. Sem token, com token inválido ou vencido
+(uma hora), a resposta é **401** — antes de qualquer chamada gRPC.
+
+**Validação.** Os corpos e parâmetros são declarados como modelos Pydantic:
+campos obrigatórios, `amount > 0`, `method` só `CREDIT` ou `DEBIT`, categoria
+de uma lista fechada, datas no formato `AAAA-MM-DD`. Qualquer violação, e JSON
+malformado, resulta em **400** (o FastAPI usaria 422 por padrão; o enunciado
+pede 400). Um cartão inexistente também é 400 — quem diz isso é o serviço de
+Cartões, consultado pelo de Gastos.
+
+```bash
+TOKEN=$(curl -s localhost:8000/auth/token -H 'Content-Type: application/json' \
+  -d '{"username":"demo","password":"..."}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+curl -i localhost:8000/expenses                                   # 401
+curl -i localhost:8000/expenses -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"product":"x","amount":0}' -X POST   # 400
+```
 
 ## Contrato
 
-`proto/expenses.proto` define seis RPCs, sendo uma com *server-streaming*:
+`proto/expenses.proto` define dois serviços, que compartilham as mensagens:
 
-| RPC | Tipo | Para quê |
-|---|---|---|
-| `RegisterCard` | unário | cadastra a dupla (nome, método) |
-| `ListCards` | unário | alimenta o prompt do modelo com cartões reais |
-| `ValidateCard` | unário | verifica antes de agir; recusa cartão inventado |
-| `RegisterExpense` | unário | grava a despesa |
-| `SearchExpenses` | **streaming** | devolve os gastos um a um |
-| `SummaryByGroup` | unário | totais por `category`, `card` ou `method` |
+| Serviço | RPC | Tipo | Para quê |
+|---|---|---|---|
+| `CardService` | `RegisterCard` | unário | cadastra a dupla (nome, método) |
+| | `ListCards` | unário | alimenta o prompt do modelo com cartões reais |
+| | `ValidateCard` | unário | confere um cartão e devolve a grafia cadastrada |
+| `ExpenseService` | `RegisterExpense` | unário | grava o gasto, depois de consultar o `CardService` |
+| | `SearchExpenses` | **streaming** | devolve os gastos um a um |
+| | `SummaryByGroup` | unário | totais por `category`, `card` ou `method` |
 
 Um cartão é a dupla **(name, method)**: "Nubank credit" e "Nubank debit" são
 registros distintos, o que permite responder "gastos do Nubank no crédito" sem
@@ -84,20 +138,22 @@ ambiguidade.
 Três camadas independentes, porque uma LLM erra e o sistema não pode gravar
 lixo por causa disso:
 
-1. **Restrição na entrada** — o cliente chama `ListCards` e injeta a lista real
-   de cartões no prompt, junto com uma lista fechada de categorias.
-2. **Verificação antes de agir** — se o comando cita um cartão, o cliente chama
-   `ValidateCard` **antes** do RPC final. Se o cartão não existir, nada é
-   gravado nem consultado (`difflib` no servidor resolve "Nubanck" → "Nubank").
-3. **Garantia no banco** — a chave estrangeira composta em `expenses` recusa a
-   escrita mesmo que as duas camadas acima falhem.
+1. **Restrição na entrada** — o cliente busca a lista real de cartões e a
+   injeta no prompt, junto com uma lista fechada de categorias.
+2. **Verificação antes de agir** — se o comando cita um cartão, o cliente
+   consulta `GET /cards/validate` **antes** de gravar ou buscar. Se o cartão não
+   existir, oferece corrigir (`difflib` no serviço de Cartões resolve
+   "Nubanck" → "Nubank").
+3. **Garantia no backend** — mesmo que as duas camadas acima falhem, o Gateway
+   recusa categoria fora da lista, e o serviço de Gastos recusa gravar se o de
+   Cartões não confirmar o cartão. Se o serviço de Cartões estiver fora do ar,
+   Gastos recusa em vez de gravar às cegas.
 
 ### Recuperação: recusar não é o fim
 
 Quando a validação falha, o cliente não descarta o comando — oferece as saídas
-possíveis e completa a operação com a escolha do usuário. Nenhum RPC novo é
-necessário: as opções vêm do campo `suggestions` de `ValidateCardResponse`, e a
-criação usa o `RegisterCard` que já existe.
+possíveis e completa a operação com a escolha do usuário. As opções vêm do
+campo `suggestions` da validação, e a criação usa o `POST /cards`.
 
 ```
 > gastei 55 reais no crédito do Itaú
@@ -110,8 +166,6 @@ criação usa o `RegisterCard` que já existe.
   + Itau (credit) registered
   + #3  expense  55.00  Itau/credit
 ```
-
-Três situações distintas, com menus diferentes:
 
 | Situação | O que é oferecido |
 |---|---|
@@ -149,49 +203,35 @@ ANTHROPIC_TIMEOUT=30
 A chave sai em `console.anthropic.com` e exige créditos em Billing (pré-pago,
 mínimo US$ 5). Liste os modelos da conta com `python client/nlu.py --models`.
 
-Este projeto usou o Gemini primeiro. A troca aconteceu por dois motivos
-medidos, e vale registrar porque explicam decisões que ficaram no código:
-
-- **O free tier do Gemini dá 20 requisições por dia**, por modelo e por projeto
-  (`quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier`). Uma tarde de
-  testes esgotava a cota e a demonstração parava de funcionar.
-- **A latência ficava entre 10 e 25 segundos** quando o serviço estava
-  carregado. Ao vivo, esperar isso depois de cada frase digitada inviabiliza a
-  apresentação.
-
-Latência medida com o Haiku 4.5: **1,8 a 3,7 segundos** por comando, contra
-~4 ms do salto gRPC. Vale mostrar isso na apresentação — o cliente imprime os
-dois tempos lado a lado, e eles deixam claro que o gRPC não é o gargalo.
-
-Custo: o prompt tem ~660 tokens de entrada e a resposta ~100 de saída, o que dá
-**US$ 0,0012 por comando** no Haiku 4.5 (US$ 0,006 no Opus 5). O projeto
-inteiro, incluindo ensaios, fica abaixo de um dólar.
-
-Trocar o provedor mexeu apenas em `client/nlu.py`. O `.proto`, o servidor e o
-resto do cliente não mudaram uma linha — nenhum deles sabe qual LLM está atrás.
+Este projeto usou o Gemini primeiro e migrou por dois motivos medidos: o free
+tier dava **20 requisições por dia** por modelo, e a latência ficava entre **10
+e 25 segundos** com o serviço carregado. Com o Haiku 4.5 a interpretação leva
+**1,8 a 3,7 segundos**, e custa cerca de **US$ 0,0012 por comando**. A troca
+mexeu apenas em `client/nlu.py`.
 
 ## Rodando localmente
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r client/requirements.txt
+pip install -r server/requirements.txt -r gateway/requirements.txt -r client/requirements.txt
 bash generate_stubs.sh
-cp .env.example .env      # e preencha a ANTHROPIC_API_KEY
+cp .env.example .env      # preencha ANTHROPIC_API_KEY, JWT_SECRET, GATEWAY_USER, GATEWAY_PASSWORD
 ```
 
-Em um terminal:
+Em um terminal, o backend inteiro — os dois microsserviços e o Gateway, com
+SQLite em `data/`:
 
 ```bash
-python server/server.py
+bash run_backend.sh
 ```
 
-Em outro:
+Em outro, o cliente:
 
 ```bash
-python client/client.py --server localhost:50051
+python client/client.py --verbose
 ```
 
-Sem chave de API, use `--offline`: um interpretador por regras locais que
+Sem chave da Anthropic, use `--offline`: um interpretador por regras locais que
 cobre os comandos do roteiro de demonstração.
 
 ### Comandos de exemplo
@@ -210,26 +250,28 @@ Dentro do REPL:
 | Comando | O que faz |
 |---|---|
 | `:verbose` | mostra o comando estruturado que a LLM devolveu e os tempos de cada etapa |
-| `:bytes` | mostra o protobuf serializado de cada requisição |
+| `:bytes` | mostra a requisição HTTP e o JSON enviado ao Gateway |
 | `:cards` | lista os cartões cadastrados |
 | `:clear` | limpa a tela |
 | `:help` | exemplos de comandos |
 | `:quit` | sai |
 
-Por padrão a saída é limpa: só o resultado do comando. `:verbose` e `:bytes`
-também têm as flags `--verbose` e `--bytes` para já iniciar ligados — é assim
-que vale rodar na apresentação.
+`:verbose` e `:bytes` também têm as flags `--verbose` e `--bytes`. O outro lado
+da tradução — o tamanho do protobuf que o Gateway monta a partir do JSON —
+aparece no log do Gateway, em linhas como
+`RegisterExpense  JSON -> protobuf 114 bytes`.
 
 ## Verificação
 
 ```bash
-python client/period.py      # aritmética de datas, incluindo virada de ano
-python server/test_server.py # os seis RPCs através de um canal gRPC real
+python client/period.py          # aritmética de datas, incluindo virada de ano
+python server/test_services.py   # os dois microsserviços por canais gRPC reais
+python gateway/test_gateway.py   # 401, 400, 201 e a tradução JSON -> gRPC
 ```
 
-O teste do servidor sobe um servidor numa porta efêmera e conversa com ele por
-um canal de verdade — exercita a serialização e o transporte, não só as funções
-Python.
+Os testes sobem os serviços em portas efêmeras e conversam com eles por canais
+de verdade — exercitam serialização e transporte, não só as funções Python. O
+de serviços inclui o caso em que Cartões cai e Gastos precisa recusar.
 
 ## Deploy no GCP
 
@@ -239,43 +281,64 @@ bash infra/setup_gcp.sh                      # VMs + regra de firewall
 bash infra/deploy.sh                         # clona, instala e sobe
 ```
 
-O `setup_gcp.sh` é idempotente. A regra de firewall criada é:
+Na `vm-server` sobem três serviços do systemd — `cards`, `expenses` e
+`gateway` — que voltam sozinhos se a VM reiniciar. Para acompanhar os três
+juntos:
+
+```bash
+sudo journalctl -u gateway -u cards -u expenses -f
+```
+
+A regra de firewall criada pelo `setup_gcp.sh`:
 
 ```
-tcp:50051  ←  source-ranges 10.128.0.0/9  →  target-tags grpc-server
+tcp:8000  ←  source-ranges 10.128.0.0/9  →  target-tags grpc-server
 ```
 
-As duas restrições são o ponto: só tráfego de dentro da VPC, e só para a VM do
-servidor. A porta não fica exposta à internet.
+Só tráfego de dentro da VPC, e só para a VM do servidor. Nada fica exposto à
+internet — nem o Gateway, nem o banco.
 
-## Requisitos do trabalho
+## Requisitos do Trabalho 2
 
 | Requisito | Onde é atendido |
 |---|---|
-| Definição do tema | Controle de gastos pessoais — este README e `proto/expenses.proto` |
-| Contrato `.proto` com estruturas de dados e serviços RPC | `proto/expenses.proto`: 14 mensagens, 1 enum, 6 RPCs |
-| Microsserviço A (cliente) envia requisição gRPC | `client/client.py` |
-| Microsserviço B (servidor) processa e responde | `server/server.py` |
-| Comunicação síncrona e eficiente | 5 RPCs unários bloqueantes + 1 server-streaming (`SearchExpenses`) |
-| Regras de firewall VPC no GCP | `infra/setup_gcp.sh` — regra `allow-grpc-internal` |
-| Infraestrutura em nuvem (GCP) | 2 VMs em `southamerica-east1-a`, criadas por `infra/setup_gcp.sh` |
-| Código-fonte no GitHub | este repositório, com os dois microsserviços e o `.proto` |
-| Troca de mensagens estruturadas e serializadas | `--bytes` / `:bytes` exibem o protobuf binário de cada requisição |
+| Frontend que fala só com o Gateway | `client/client.py` — HTTP/JSON para o Gateway; os serviços gRPC nem aceitam conexão de fora da `vm-server` |
+| API Gateway com framework web | `gateway/app.py` — FastAPI, ponto único de entrada |
+| Mínimo de 2 microsserviços gRPC | `server/cards_service.py` e `server/expenses_service.py` |
+| Comunicação entre microsserviços via gRPC | Gastos chama `CardService.ValidateCard` antes de gravar |
+| Banco de dados real | Cloud SQL PostgreSQL; todas as operações leem e gravam nele |
+| Validação no Gateway: 400 / 201 | modelos Pydantic + tratador de `RequestValidationError`; `POST` retorna 201 |
+| JWT no Gateway: 401 | dependência `require_token` em todas as rotas de negócio |
+| Tradução JSON → gRPC/protobuf | função `call` do Gateway, que registra o tamanho do protobuf de cada chamada |
+
+## Requisitos do Trabalho 1
+
+| Requisito | Onde é atendido |
+|---|---|
+| Contrato `.proto` com estruturas de dados e serviços RPC | `proto/expenses.proto` |
+| Comunicação síncrona e eficiente | RPCs unários + 1 server-streaming (`SearchExpenses`) |
+| Regras de firewall VPC no GCP | `infra/setup_gcp.sh` |
+| Infraestrutura em nuvem (GCP) | 2 VMs em `us-central1-c` + Cloud SQL |
+| Código-fonte no GitHub | este repositório |
 
 O enunciado pede **um** repositório contendo os arquivos `.proto` e o código dos
-microsserviços. Microsserviço é sobre processos e máquinas separadas, não sobre
-repositórios separados — e o `.proto` ser compartilhado pelos dois lados é
+microsserviços. Microsserviço é sobre processos separados, não sobre
+repositórios separados — e o `.proto` ser compartilhado por todos os lados é
 justamente o que torna o repositório único a escolha certa: em repositórios
 distintos, o contrato dessincroniza.
 
 ## Estrutura
 
 ```
-proto/expenses.proto   contrato compartilhado pelos dois serviços
-generate_stubs.sh      gera os stubs (ficam fora do git)
-server/                Microservice B: server.py, database.py, test_server.py
-client/                Microservice A: client.py, nlu.py, period.py
-infra/                 setup_gcp.sh, deploy.sh, expenses.service
+proto/expenses.proto     contrato: CardService e ExpenseService
+generate_stubs.sh        gera os stubs para server/ e gateway/ (fora do git)
+run_backend.sh           sobe o backend local: os dois serviços e o Gateway
+gateway/                 API Gateway: app.py, test_gateway.py
+server/                  microsserviços: cards_service.py, expenses_service.py,
+                         common.py, database.py, test_services.py
+client/                  cliente de terminal: client.py, nlu.py, period.py
+infra/                   setup_gcp.sh, deploy.sh e as units do systemd
+                         (cards, expenses, gateway)
 ```
 
 Os stubs gerados não são versionados — `generate_stubs.sh` os recria. Isso
