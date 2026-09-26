@@ -3,7 +3,8 @@
 
 Sobe Cartões e Gastos em portas efêmeras e chama o Gateway por HTTP (via
 TestClient). Cobre os requisitos da borda: 401 sem token, 400 para JSON
-inválido, 201 na criação, e a tradução JSON -> gRPC até o banco.
+inválido, 201 na criação, a tradução JSON -> gRPC até o banco, o ciclo
+completo do gasto (criar, alterar, remover) e a rota de linguagem natural.
 
     python gateway/test_gateway.py
 """
@@ -16,6 +17,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 os.environ.update(JWT_SECRET="test-secret-with-at-least-32-bytes!", GATEWAY_USER="demo",
                   GATEWAY_PASSWORD="demo-password")
+# O teste exercita o caminho offline da interpretação: sem chave, POST
+# /nlu/interpret usa o interpretador por regras e não toca a rede.
+os.environ.pop("ANTHROPIC_API_KEY", None)
 
 from test_services import start_services  # noqa: E402
 
@@ -108,6 +112,74 @@ def check():
                       headers=auth).status_code == 400
     assert client.get("/expenses", params={"start_date": "ontem"},
                       headers=auth).status_code == 400
+
+    # --- alteração e remoção ------------------------------------------------
+    expense_id = created.json()["expense"]["id"]
+    client.post("/cards", json={"name": "Nubank", "method": "DEBIT"}, headers=auth)
+
+    edited = client.put("/expenses/%d" % expense_id,
+                        json=dict(expense, product="mouse", amount=120.0,
+                                  method="DEBIT"), headers=auth)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["expense"]["product"] == "mouse", edited.text
+
+    # A alteração está no banco, não só na resposta.
+    stored = client.get("/expenses", headers=auth).json()["expenses"]
+    assert [e["product"] for e in stored] == ["mouse"], stored
+
+    # Mesma validação de payload do POST, e 400 para cartão inexistente.
+    assert client.put("/expenses/%d" % expense_id,
+                      json=dict(expense, amount=0), headers=auth).status_code == 400
+    assert client.put("/expenses/%d" % expense_id,
+                      json=dict(expense, card="Bradesco"),
+                      headers=auth).status_code == 400
+    assert client.put("/expenses/9999", json=expense, headers=auth).status_code == 404
+    assert client.put("/expenses/0", json=expense, headers=auth).status_code == 400
+
+    # Sem token, alterar e remover também param na borda.
+    assert client.put("/expenses/%d" % expense_id, json=expense).status_code == 401
+    assert client.delete("/expenses/%d" % expense_id).status_code == 401
+
+    assert client.delete("/expenses/%d" % expense_id, headers=auth).status_code == 200
+    assert client.get("/expenses", headers=auth).json()["expenses"] == []
+    assert client.delete("/expenses/%d" % expense_id, headers=auth).status_code == 404
+
+    # --- listas fechadas publicadas para a interface ------------------------
+    assert client.get("/meta").status_code == 401
+    facts = client.get("/meta", headers=auth).json()
+    assert facts["methods"] == ["CREDIT", "DEBIT"], facts
+    assert "technology" in facts["categories"] and "this_month" in facts["periods"]
+    assert facts["nlu"]["enabled"] is False   # sem ANTHROPIC_API_KEY neste teste
+
+    # --- linguagem natural --------------------------------------------------
+    assert client.post("/nlu/interpret", json={"text": "oi"}).status_code == 401
+    assert client.post("/nlu/interpret", json={"text": ""},
+                       headers=auth).status_code == 400
+    assert client.post("/nlu/interpret", json={}, headers=auth).status_code == 400
+
+    said = client.post("/nlu/interpret",
+                       json={"text": "gastei 89 reais num teclado no crédito do Nubank"},
+                       headers=auth)
+    assert said.status_code == 200, said.text
+    body = said.json()
+    assert body["action"] == "register_expense" and body["status"] == "ok", body
+    assert body["interpreter"] == "offline", body
+    recorded = body["result"]["expense"]
+    assert recorded["amount"] == 89.0 and recorded["card"] == "Nubank", recorded
+    # O gasto foi mesmo para o banco, pelo mesmo RPC que a rota POST /expenses usa.
+    assert len(client.get("/expenses", headers=auth).json()["expenses"]) == 1
+
+    # Cartão que não existe não vira gasto: volta pedindo correção, com opções.
+    missing = client.post("/nlu/interpret",
+                          json={"text": "gastei 30 reais de uber no crédito do Bradesco"},
+                          headers=auth).json()
+    assert missing["status"] == "needs_card", missing
+    assert missing["pending"]["amount"] == 30.0, missing
+    assert len(client.get("/expenses", headers=auth).json()["expenses"]) == 1
+
+    asked = client.post("/nlu/interpret", json={"text": "resumo por método"},
+                        headers=auth).json()
+    assert asked["action"] == "summary" and asked["result"]["group_by"] == "method", asked
 
 
 if __name__ == "__main__":
