@@ -30,8 +30,9 @@ import urllib.request
 import warnings
 from datetime import date
 
-import nlu
-import period
+# O pacote language/ fica na raiz do repositório, um nível acima de client/.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from language import nlu, period   # noqa: E402
 
 METHOD_LABEL = {"": "-", None: "-", "CREDIT": "credit", "DEBIT": "debit"}
 METHODS = ("CREDIT", "DEBIT")

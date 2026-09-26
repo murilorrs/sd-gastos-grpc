@@ -1,0 +1,56 @@
+.ui-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ui-spinner-svg {
+    animation: spinner-spin 1s linear infinite;
+}
+
+.ui-spinner-track {
+    opacity: 0.15;
+}
+
+.ui-spinner-head {
+    opacity: 1;
+}
+
+/* Tamanhos */
+.ui-spinner--sm .ui-spinner-svg {
+    width: 16px;
+    height: 16px;
+}
+
+.ui-spinner--md .ui-spinner-svg {
+    width: 24px;
+    height: 24px;
+}
+
+.ui-spinner--lg .ui-spinner-svg {
+    width: 32px;
+    height: 32px;
+}
+
+/* Cores */
+.ui-spinner--primary {
+    color: var(--ui-primary, #3b82f6);
+}
+
+.ui-spinner--white {
+    color: #FFFFFF;
+}
+
+.ui-spinner--gray {
+    color: var(--ui-gray-400, #94a3b8);
+}
+
+@keyframes spinner-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+

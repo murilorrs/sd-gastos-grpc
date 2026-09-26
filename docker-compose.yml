@@ -1,0 +1,90 @@
+# O sistema inteiro na sua máquina, com PostgreSQL de verdade.
+#
+#   docker compose up --build
+#   # e abra http://localhost:8080
+#
+# É a mesma topologia do GCP, encolhida: o container "web" faz o papel do nginx
+# da vm-client, "gateway" o da vm-server, e "db" o do Cloud SQL. Serve para
+# desenvolver e como plano B na apresentação, se a nuvem falhar.
+#
+# Repare no que NÃO tem porta publicada: cards, expenses e db. Eles só existem
+# dentro da rede do compose — nas VMs o mesmo isolamento vem de escutarem só em
+# 127.0.0.1 e de o banco ter apenas IP privado.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: expenses
+      POSTGRES_USER: expenses_app
+      POSTGRES_PASSWORD: expenses_local_password
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Sem isto os microsserviços subiriam antes do banco aceitar conexão e
+      # morreriam na primeira consulta.
+      test: ["CMD-SHELL", "pg_isready -U expenses_app -d expenses"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  cards:
+    build: .
+    working_dir: /app/server
+    # 0.0.0.0 aqui não abre nada para fora: quem isola é a rede do compose,
+    # que não publica porta nenhuma deste serviço.
+    command: python cards_service.py --host 0.0.0.0
+    environment: &db-env
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: expenses
+      PGUSER: expenses_app
+      PGPASSWORD: expenses_local_password
+    depends_on:
+      db:
+        condition: service_healthy
+
+  expenses:
+    build: .
+    working_dir: /app/server
+    command: python expenses_service.py --host 0.0.0.0
+    environment:
+      <<: *db-env
+      CARDS_ADDR: cards:50052
+    depends_on:
+      db:
+        condition: service_healthy
+      cards:
+        condition: service_started
+
+  gateway:
+    build: .
+    working_dir: /app/gateway
+    command: python -m uvicorn app:app --host 0.0.0.0 --port 8000
+    environment:
+      CARDS_ADDR: cards:50052
+      EXPENSES_ADDR: expenses:50051
+      JWT_SECRET: segredo-local-do-compose-nao-use-em-producao
+      GATEWAY_USER: demo
+      GATEWAY_PASSWORD: demo-password
+      # Opcional: exporte ANTHROPIC_API_KEY no seu shell antes do "up" para
+      # habilitar a interpretação em linguagem natural.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5}
+    # Publicada só para você poder abrir /docs direto; a interface web não
+    # precisa dela, porque fala com o Gateway pelo nginx do container "web".
+    ports:
+      - "8000:8000"
+    depends_on:
+      - cards
+      - expenses
+
+  web:
+    build: ./web
+    ports:
+      - "8080:80"
+    depends_on:
+      - gateway
+
+volumes:
+  db-data:

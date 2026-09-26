@@ -1,0 +1,109 @@
+/* Tokens da interface.
+ *
+ * A escala de raio é deliberadamente curta e quase reta: 2px nos controles,
+ * 3px nas superfícies, 0 onde a borda encosta noutra borda. Cantos redondos
+ * escondem a grade; com a borda quase reta, o alinhamento entre tabela, cartão
+ * e formulário fica visível — e é o alinhamento que faz a tela parecer
+ * desenhada em vez de montada.
+ *
+ * Pelo mesmo motivo a sombra quase sumiu: a separação entre superfícies vem de
+ * uma linha de 1px, não de um desfoque. Sombra ficou só onde algo de fato
+ * flutua — o modal e o toast.
+ */
+
+:root {
+  /* Marca. Sobrescritos em tempo de execução por applyBrandTheme(). */
+  --brand-header-bg: #0F172A;
+  --brand-primary: #0D9488;
+  --brand-primary-hover: #0F766E;
+  --brand-accent: #34D399;
+  --brand-text-dark: #0F172A;
+  --brand-font: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --brand-mono-font: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --brand-accent-strong: #0D9488;
+  --brand-accent-soft: #CCFBF1;
+
+  /* Primária */
+  --ui-primary: var(--brand-primary);
+  --ui-primary-hover: var(--brand-primary-hover);
+  --ui-primary-subtle: #F0FDFA;
+
+  /* Sucesso */
+  --ui-success: #059669;
+  --ui-success-hover: #047857;
+  --ui-success-subtle: #ECFDF5;
+
+  /* Erro */
+  --ui-danger: #DC2626;
+  --ui-danger-hover: #B91C1C;
+  --ui-danger-subtle: #FEF2F2;
+
+  /* Alerta */
+  --ui-warning: #D97706;
+  --ui-warning-hover: #B45309;
+  --ui-warning-subtle: #FFFBEB;
+
+  /* Informação */
+  --ui-info: #2563EB;
+  --ui-info-hover: #1D4ED8;
+  --ui-info-subtle: #EFF6FF;
+
+  /* Neutros */
+  --ui-white: #FFFFFF;
+  --ui-gray-50: #F8FAFC;
+  --ui-gray-100: #F1F5F9;
+  --ui-gray-200: #E2E8F0;
+  --ui-gray-300: #CBD5E1;
+  --ui-gray-400: #94A3B8;
+  --ui-gray-500: #64748B;
+  --ui-gray-600: #475569;
+  --ui-gray-700: #334155;
+  --ui-gray-800: #1E293B;
+  --ui-gray-900: #0F172A;
+
+  /* A linha que separa superfícies. Faz o papel que a sombra fazia. */
+  --ui-border: #E2E8F0;
+  --ui-border-strong: #CBD5E1;
+
+  /* Tipografia */
+  --ui-font-family: var(--brand-font);
+  --ui-font-size-xs: 0.6875rem;   /* 11px - micro-rótulos */
+  --ui-font-size-sm: 0.8125rem;   /* 13px - texto de interface */
+  --ui-font-size-base: 0.875rem;  /* 14px - corpo */
+  --ui-font-size-lg: 1rem;        /* 16px */
+  --ui-font-size-xl: 1.25rem;     /* 20px - títulos de página */
+  --ui-font-size-2xl: 1.5rem;     /* 24px - números de destaque */
+
+  /* Entrelinhamento dos títulos: negativo, que é o que separa um título
+     desenhado de um parágrafo em negrito. */
+  --ui-tracking-tight: -0.014em;
+  --ui-tracking-wide: 0.06em;
+
+  /* Espaçamento */
+  --ui-spacing-1: 0.25rem;
+  --ui-spacing-2: 0.5rem;
+  --ui-spacing-3: 0.75rem;
+  --ui-spacing-4: 1rem;
+  --ui-spacing-5: 1.25rem;
+  --ui-spacing-6: 1.5rem;
+  --ui-spacing-8: 2rem;
+
+  /* Raio */
+  --ui-radius-xs: 0;
+  --ui-radius-sm: 2px;
+  --ui-radius-md: 2px;
+  --ui-radius-lg: 3px;
+  /* Nada é pílula nesta interface. O token continua existindo porque os
+     componentes o citam; o valor é que mudou. */
+  --ui-radius-full: 2px;
+
+  /* Sombra — só para o que flutua de verdade */
+  --ui-shadow-sm: none;
+  --ui-shadow-md: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --ui-shadow-lg: 0 16px 40px -12px rgba(15, 23, 42, 0.22);
+  --ui-shadow-hover: none;
+
+  /* Transições */
+  --ui-transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ui-transition-base: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}

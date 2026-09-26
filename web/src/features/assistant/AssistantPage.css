@@ -1,0 +1,202 @@
+.assistant-input-card {
+    margin-bottom: 12px;
+}
+
+/* A barra de comando é a linha mais importante da tela: um retângulo só, com
+   o botão encaixado dentro dele em vez de flutuando ao lado. */
+.assistant-form {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: var(--ui-radius-sm);
+    padding: 5px 5px 5px 12px;
+    transition: border-color var(--ui-transition-base),
+                box-shadow var(--ui-transition-base);
+}
+
+.assistant-form:focus-within {
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 2px var(--ui-primary-subtle);
+}
+
+.assistant-form-icon {
+    color: var(--ui-gray-400);
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+}
+
+.assistant-form:focus-within .assistant-form-icon {
+    color: var(--brand-primary);
+}
+
+.assistant-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: var(--ui-font-size-base);
+    color: var(--ui-gray-900);
+    background: transparent;
+    padding: 7px 0;
+}
+
+.assistant-input::placeholder {
+    color: var(--ui-gray-400);
+}
+
+.assistant-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.assistant-example {
+    border: 1px solid var(--ui-border);
+    background: var(--ui-gray-50);
+    border-radius: var(--ui-radius-sm);
+    padding: 4px 9px;
+    font-family: inherit;
+    font-size: var(--ui-font-size-xs);
+    color: var(--ui-gray-600);
+    cursor: pointer;
+    transition: var(--ui-transition-base);
+}
+
+.assistant-example:hover:not(:disabled) {
+    border-color: var(--brand-primary);
+    background: var(--ui-white);
+    color: var(--brand-primary-hover);
+}
+
+.assistant-example:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.assistant-input-card .ui-alert {
+    margin-top: 12px;
+}
+
+/* ---- histórico -------------------------------------------------------- */
+
+.assistant-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.assistant-hint {
+    margin: 0;
+    padding: 32px 0;
+    text-align: center;
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-400);
+}
+
+.assistant-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.assistant-said {
+    margin: 0;
+    padding-left: 10px;
+    border-left: 2px solid var(--brand-primary);
+    font-size: var(--ui-font-size-base);
+    font-weight: 500;
+    color: var(--ui-gray-900);
+}
+
+.assistant-waiting {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-500);
+}
+
+/* ---- resultados ------------------------------------------------------- */
+
+.assistant-result {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #D1FAE5;
+    border-left: 2px solid var(--ui-success);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-success-subtle);
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-800);
+}
+
+.assistant-result-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    border-radius: var(--ui-radius-xs);
+    background: var(--ui-success);
+    color: var(--ui-white);
+    font-family: var(--brand-mono-font);
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.assistant-result > div { flex: 1; min-width: 0; }
+.assistant-result .muted { font-size: var(--ui-font-size-xs); }
+
+.assistant-rows {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    overflow: hidden;
+}
+
+.assistant-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) 110px;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 12px;
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-700);
+    border-bottom: 1px solid var(--ui-gray-100);
+}
+
+.assistant-row:last-child { border-bottom: none; }
+.assistant-row .amount { text-align: right; }
+
+.assistant-row.is-total {
+    background: var(--ui-gray-50);
+    font-weight: 600;
+    color: var(--ui-gray-900);
+}
+
+.assistant-plain {
+    margin: 0;
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-700);
+}
+
+.assistant-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.assistant-choice .muted { margin: 0; }
+
+.assistant-offers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}

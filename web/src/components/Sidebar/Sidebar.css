@@ -1,0 +1,66 @@
+.sidebar {
+    width: 208px;
+    flex-shrink: 0;
+    background: var(--ui-white);
+    border-right: 1px solid var(--ui-border);
+    overflow-y: auto;
+}
+
+.sidebar-list {
+    list-style: none;
+    margin: 0;
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+/* Item ativo marcado por uma régua de 2px à esquerda, e não por uma cápsula
+   colorida: a régua fica presa à borda da coluna e reforça o alinhamento. */
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-left: 2px solid transparent;
+    border-radius: 0 var(--ui-radius-sm) var(--ui-radius-sm) 0;
+    color: var(--ui-gray-600);
+    text-decoration: none;
+    transition: background-color var(--ui-transition-fast),
+                color var(--ui-transition-fast),
+                border-color var(--ui-transition-fast);
+}
+
+.sidebar-link:hover {
+    background: var(--ui-gray-50);
+    color: var(--ui-gray-900);
+}
+
+.sidebar-link.is-active {
+    background: var(--ui-gray-50);
+    border-left-color: var(--brand-primary);
+    color: var(--brand-primary-hover);
+}
+
+.sidebar-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-gray-400);
+}
+
+.sidebar-link:hover .sidebar-icon { color: var(--ui-gray-600); }
+.sidebar-link.is-active .sidebar-icon { color: var(--brand-primary); }
+
+.sidebar-label {
+    font-size: var(--ui-font-size-sm);
+    font-weight: 500;
+}
+
+.sidebar-link.is-active .sidebar-label { font-weight: 600; }
+
+@media (max-width: 860px) {
+    .sidebar { width: 50px; }
+    .sidebar-label { display: none; }
+    .sidebar-link { justify-content: center; padding: 10px 0; }
+}

@@ -1,0 +1,192 @@
+.diag-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    margin-top: 12px;
+}
+
+/* ---- cenários --------------------------------------------------------- */
+
+.diag-scenarios {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.diag-scenarios li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--ui-gray-100);
+}
+
+.diag-scenarios li:last-child { border-bottom: none; padding-bottom: 0; }
+.diag-scenarios li:first-child { padding-top: 0; }
+
+.diag-scenario-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.diag-scenario-text strong {
+    font-size: var(--ui-font-size-sm);
+    font-weight: 600;
+    color: var(--ui-gray-900);
+}
+
+.diag-scenario-text .muted {
+    font-size: var(--ui-font-size-xs);
+    line-height: 1.5;
+}
+
+.diag-scenario-run {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* Esperado × obtido, em monoespaçada para os números alinharem na coluna. */
+.diag-verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--brand-mono-font);
+    font-size: 10.5px;
+    color: var(--ui-danger);
+    white-space: nowrap;
+}
+
+.diag-verdict.is-ok { color: var(--ui-success); }
+.diag-verdict svg { width: 12px; height: 12px; }
+
+/* ---- log -------------------------------------------------------------- */
+
+.diag-log-card {
+    position: sticky;
+    top: 0;
+    overflow: hidden;
+}
+
+.diag-log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--ui-border);
+    background: var(--ui-gray-50);
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-wide);
+    text-transform: uppercase;
+    color: var(--ui-gray-400);
+}
+
+.diag-log-head .muted {
+    font-family: var(--brand-mono-font);
+    font-size: var(--ui-font-size-xs);
+    letter-spacing: 0;
+}
+
+.diag-log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: calc(100vh - 230px);
+    overflow-y: auto;
+}
+
+.diag-log-item {
+    border-bottom: 1px solid var(--ui-gray-100);
+}
+
+.diag-log-item:last-child { border-bottom: none; }
+
+.diag-log-summary {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 38px 46px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--ui-transition-fast);
+}
+
+.diag-log-summary:hover { background: var(--ui-gray-50); }
+
+.diag-log-method {
+    font-family: var(--brand-mono-font);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--ui-gray-400);
+}
+
+.diag-log-path {
+    font-size: 11.5px;
+    color: var(--ui-gray-800);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.diag-log-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--ui-gray-400);
+    white-space: nowrap;
+}
+
+.diag-log-summary .muted {
+    font-family: var(--brand-mono-font);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.diag-log-detail {
+    padding: 0 14px 12px;
+}
+
+.diag-log-label {
+    margin: 8px 0 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-wide);
+    text-transform: uppercase;
+    color: var(--ui-gray-400);
+}
+
+.diag-log-detail pre {
+    margin: 0;
+    padding: 9px 11px;
+    background: var(--ui-gray-900);
+    color: #CBD5E1;
+    border-radius: var(--ui-radius-sm);
+    font-family: var(--brand-mono-font);
+    font-size: 11px;
+    line-height: 1.55;
+    overflow-x: auto;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.diag-log-detail pre.is-bad { color: #FCA5A5; }
+
+@media (max-width: 1100px) {
+    .diag-layout { grid-template-columns: 1fr; }
+    .diag-log-card { position: static; }
+    .diag-log { max-height: 420px; }
+}

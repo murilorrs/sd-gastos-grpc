@@ -91,6 +91,29 @@ message RegisterExpenseResponse {
   string  message = 3;
 }
 
+// Alteração de um gasto já gravado. Carrega o registro inteiro, não só os
+// campos mexidos: o cliente manda o gasto como ele deve ficar, e o serviço
+// revalida o cartão no CardService antes de gravar — uma edição pode trocar o
+// cartão tanto quanto uma criação pode inventá-lo.
+message UpdateExpenseRequest {
+  int32         id          = 1;
+  string        product     = 2;
+  string        description = 3;
+  double        amount      = 4;
+  string        card        = 5;
+  PaymentMethod method      = 6;
+  string        category    = 7;
+  string        date        = 8;  // YYYY-MM-DD; vazio = mantém a data atual
+}
+
+message DeleteExpenseRequest {
+  int32 id = 1;
+}
+message DeleteExpenseResponse {
+  bool   ok      = 1;
+  string message = 2;
+}
+
 message GroupTotal {
   string key    = 1;
   double total  = 2;
@@ -126,4 +149,10 @@ service ExpenseService {
   rpc SearchExpenses  (Filter)                 returns (stream Expense);
 
   rpc SummaryByGroup  (SummaryRequest)         returns (SummaryResponse);
+
+  // Alteração e remoção fecham o ciclo de vida do gasto. UpdateExpense devolve
+  // a mesma RegisterExpenseResponse do registro: o corpo da resposta é o gasto
+  // como ficou, e ok=false quando o cartão da edição não existe.
+  rpc UpdateExpense   (UpdateExpenseRequest)   returns (RegisterExpenseResponse);
+  rpc DeleteExpense   (DeleteExpenseRequest)   returns (DeleteExpenseResponse);
 }

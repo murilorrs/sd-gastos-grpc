@@ -38,16 +38,7 @@ class ExpenseService(expenses_pb2_grpc.ExpenseServiceServicer):
             context.abort(grpc.StatusCode.INVALID_ARGUMENT,
                           "payment method is required: CREDIT or DEBIT")
 
-        try:
-            validation = self._cards.ValidateCard(
-                expenses_pb2.ValidateCardRequest(name=request.card.strip(),
-                                                 method=request.method),
-                timeout=5,
-            )
-        except grpc.RpcError as error:
-            context.abort(grpc.StatusCode.UNAVAILABLE,
-                          "cards service unavailable: %s" % error.code().name)
-
+        validation = self._validate_card(request.card, request.method, context)
         if not validation.exists:
             return expenses_pb2.RegisterExpenseResponse(ok=False,
                                                         message=validation.message)
@@ -66,6 +57,81 @@ class ExpenseService(expenses_pb2_grpc.ExpenseServiceServicer):
             expense=expenses_pb2.Expense(**expense),
             message="expense #%d recorded" % expense["id"],
         )
+
+    def _validate_card(self, card, method, context):
+        """Pergunta ao microsserviço de Cartões se o par (cartão, método) existe.
+
+        É a comunicação entre microsserviços do sistema, e o mesmo passo vale
+        para criar e para alterar: uma edição pode trocar o cartão tanto quanto
+        uma criação pode inventá-lo. Se o serviço de Cartões estiver fora do ar,
+        aborta — gravar às cegas é pior que recusar.
+        """
+        try:
+            return self._cards.ValidateCard(
+                expenses_pb2.ValidateCardRequest(name=card.strip(), method=method),
+                timeout=5,
+            )
+        except grpc.RpcError as error:
+            context.abort(grpc.StatusCode.UNAVAILABLE,
+                          "cards service unavailable: %s" % error.code().name)
+
+    def UpdateExpense(self, request, context):
+        """Regrava um gasto existente. Mesmas checagens do registro, mais o id."""
+        log_rpc(context, "UpdateExpense", "#%d %s %.2f %s/%s" % (
+            request.id, request.product, request.amount, request.card,
+            METHOD_LABEL[request.method]))
+
+        if request.id <= 0:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "expense id is required")
+        if not request.product.strip():
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "product is required")
+        if request.amount <= 0:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          "amount must be greater than zero")
+        if request.method == expenses_pb2.METHOD_UNSPECIFIED:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT,
+                          "payment method is required: CREDIT or DEBIT")
+
+        current = self._store.get_expense(request.id)
+        if current is None:
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          "expense #%d not found" % request.id)
+
+        validation = self._validate_card(request.card, request.method, context)
+        if not validation.exists:
+            return expenses_pb2.RegisterExpenseResponse(ok=False,
+                                                        message=validation.message)
+
+        expense = self._store.update_expense(
+            request.id,
+            product=request.product.strip(),
+            description=request.description.strip(),
+            amount=request.amount,
+            card=validation.name,   # grafia cadastrada, não a digitada
+            method=request.method,
+            category=(request.category.strip() or current["category"]),
+            date=(request.date.strip() or current["date"]),
+        )
+        # Só acontece se alguém remover o gasto entre o get e o update acima.
+        if expense is None:
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          "expense #%d not found" % request.id)
+
+        return expenses_pb2.RegisterExpenseResponse(
+            ok=True,
+            expense=expenses_pb2.Expense(**expense),
+            message="expense #%d updated" % expense["id"],
+        )
+
+    def DeleteExpense(self, request, context):
+        log_rpc(context, "DeleteExpense", "#%d" % request.id)
+        if request.id <= 0:
+            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "expense id is required")
+        if not self._store.delete_expense(request.id):
+            context.abort(grpc.StatusCode.NOT_FOUND,
+                          "expense #%d not found" % request.id)
+        return expenses_pb2.DeleteExpenseResponse(
+            ok=True, message="expense #%d deleted" % request.id)
 
     def SearchExpenses(self, request, context):
         log_rpc(context, "SearchExpenses", _describe_filter(request))

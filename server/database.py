@@ -206,6 +206,52 @@ class ExpenseStore(_Store):
             "created_at": created_at,
         }
 
+    def get_expense(self, expense_id):
+        """Um gasto pelo id, ou None. Usado antes de alterar e de remover."""
+        with self._lock:
+            row = self._run(
+                "SELECT id, product, description, amount, card, method, category,"
+                " date, created_at FROM expenses WHERE id = ?",
+                (expense_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_expense(self, expense_id, product, description, amount, card,
+                       method, category, date):
+        """Regrava o gasto inteiro e devolve como ficou, ou None se não existe.
+
+        Como no insert, não confere o cartão: quem faz isso é o serviço, pela
+        chamada gRPC ao CardService. created_at não é tocado — ele registra
+        quando a linha nasceu, não quando foi mexida.
+        """
+        with self._lock:
+            rows = self._run(
+                "UPDATE expenses SET product = ?, description = ?, amount = ?,"
+                " card = ?, method = ?, category = ?, date = ?"
+                " WHERE id = ? RETURNING created_at",
+                (product, description, amount, card, method, category, date,
+                 expense_id),
+            ).fetchall()
+        if not rows:
+            return None
+        return {
+            "id": expense_id,
+            "product": product,
+            "description": description,
+            "amount": amount,
+            "card": card,
+            "method": method,
+            "category": category,
+            "date": date,
+            "created_at": rows[0]["created_at"],
+        }
+
+    def delete_expense(self, expense_id):
+        """True se removeu, False se o id não existia."""
+        with self._lock:
+            cursor = self._run("DELETE FROM expenses WHERE id = ?", (expense_id,))
+            return cursor.rowcount > 0
+
     def search_expenses(self, filters):
         where, params = _build_where(filters)
         with self._lock:

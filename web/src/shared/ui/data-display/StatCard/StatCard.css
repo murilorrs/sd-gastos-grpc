@@ -1,0 +1,90 @@
+@import "../../tokens.css";
+
+/* O número é o conteúdo; o resto é legenda. A cor da variante entra como uma
+   régua de 2px no topo — larga o bastante para agrupar, fina o bastante para
+   não competir com o valor. */
+.ui-stat-card {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 18px;
+    background-color: var(--ui-white);
+    border: 1px solid var(--ui-border);
+    border-top-width: 2px;
+    border-radius: var(--ui-radius-lg);
+    font-family: var(--ui-font-family);
+    transition: border-color var(--ui-transition-base);
+}
+
+.ui-stat-card:hover {
+    border-color: var(--ui-border-strong);
+}
+
+.ui-stat-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--ui-spacing-3);
+}
+
+.ui-stat-card-label {
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-wide);
+    text-transform: uppercase;
+    color: var(--ui-gray-500);
+}
+
+.ui-stat-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: var(--ui-radius-sm);
+    background-color: var(--ui-gray-50);
+    border: 1px solid var(--ui-gray-100);
+    color: var(--ui-gray-400);
+}
+
+.ui-stat-card-body {
+    display: flex;
+    align-items: baseline;
+    gap: var(--ui-spacing-3);
+}
+
+.ui-stat-card-value {
+    font-size: var(--ui-font-size-2xl);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-tight);
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-gray-900);
+    line-height: 1.15;
+}
+
+.ui-stat-card-trend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+}
+
+.ui-stat-card-trend.is-up { color: var(--ui-success); }
+.ui-stat-card-trend.is-down { color: var(--ui-danger); }
+
+.ui-stat-card-footer {
+    margin-top: var(--ui-spacing-2);
+    font-size: var(--ui-font-size-xs);
+    color: var(--ui-gray-400);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Variantes: só a régua do topo muda. */
+.ui-stat-card--primary { border-top-color: var(--ui-primary); }
+.ui-stat-card--success { border-top-color: var(--ui-success); }
+.ui-stat-card--danger  { border-top-color: var(--ui-danger); }
+.ui-stat-card--warning { border-top-color: var(--ui-warning); }
+.ui-stat-card--info    { border-top-color: var(--ui-info); }
+.ui-stat-card--gray    { border-top-color: var(--ui-gray-300); }

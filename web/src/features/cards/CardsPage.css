@@ -1,0 +1,113 @@
+.cards-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 330px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.cards-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cards-form button {
+    align-self: flex-start;
+}
+
+.cards-loading {
+    display: flex;
+    justify-content: center;
+    padding: 36px 0;
+}
+
+/* Grade de cartões sem cantos: blocos encostados na mesma linha de base. */
+.cards-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 8px;
+}
+
+.card-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-white);
+    transition: border-color var(--ui-transition-base);
+}
+
+.card-chip:hover {
+    border-color: var(--ui-border-strong);
+}
+
+.card-chip-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-gray-50);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-gray-500);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-chip-icon svg { width: 15px; height: 15px; }
+
+.card-chip strong {
+    display: block;
+    font-size: var(--ui-font-size-sm);
+    font-weight: 600;
+    color: var(--ui-gray-900);
+    margin-bottom: 4px;
+}
+
+.card-chip-methods {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.probe-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 10px 12px;
+    border: 1px solid #FEE2E2;
+    border-left: 2px solid var(--ui-danger);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-danger-subtle);
+    color: var(--ui-danger-hover);
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.5;
+}
+
+.probe-result.is-ok {
+    background: var(--ui-success-subtle);
+    border-color: #D1FAE5;
+    border-left-color: var(--ui-success);
+    color: var(--ui-success-hover);
+}
+
+.probe-result svg { flex-shrink: 0; width: 15px; height: 15px; margin-top: 1px; }
+
+.probe-result p { margin: 0; }
+
+.probe-result .muted {
+    margin-top: 3px;
+    font-size: var(--ui-font-size-xs);
+    opacity: 0.85;
+    color: inherit;
+}
+
+@media (max-width: 900px) {
+    .cards-layout { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,35 @@
+@import "../../tokens.css";
+
+.ui-icon-button {
+    padding: 0;
+    min-width: unset;
+    aspect-ratio: 1 / 1;
+}
+
+.ui-icon-button--sm { width: 28px; height: 28px; }
+.ui-icon-button--md { width: 34px; height: 34px; }
+.ui-icon-button--lg { width: 42px; height: 42px; }
+
+/* Nem o botão redondo é redondo: a variante existe no componente, e aqui ela
+   recebe o mesmo canto de todo o resto. */
+.ui-icon-button--round {
+    border-radius: var(--ui-radius-sm);
+}
+
+.ui-icon-button__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ui-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
