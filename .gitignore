@@ -12,6 +12,10 @@
 # Configuração local da infraestrutura
 infra/config.sh
 
+# Frontend
+node_modules/
+web/dist/
+
 # Python
 __pycache__/
 *.pyc

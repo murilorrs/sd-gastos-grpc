@@ -3,61 +3,85 @@
 > **Integrantes:** Murilo Rodrigues, (preencher), (preencher)
 
 Trabalhos 1 e 2 de Sistemas Distribuídos — um sistema de controle de gastos com
-**API Gateway (FastAPI)**, **dois microsserviços gRPC** e **PostgreSQL** (Cloud
-SQL), rodando em duas VMs no **Google Cloud Platform**.
+**interface web em React**, **API Gateway (FastAPI)**, **dois microsserviços
+gRPC** e **PostgreSQL** (Cloud SQL), rodando em duas VMs no **Google Cloud
+Platform**.
 
-O usuário descreve um gasto em português ("gastei 89 reais num teclado no
-crédito do Nubank"). O cliente usa a API da Anthropic para transformar a frase
-num comando estruturado e o envia ao **Gateway** por HTTP/JSON, com um token
-JWT. O Gateway valida, traduz para **gRPC/protobuf** e despacha para o
+O usuário registra e consulta gastos pela interface web, que fala **só com o
+Gateway**, por HTTP/JSON e com um token JWT. O Gateway autentica, valida o
+payload e traduz cada chamada para **gRPC/protobuf**, despachando para o
 microsserviço dono do dado — **Cartões** ou **Gastos** — que persiste no banco.
 
-> Código, identificadores e mensagens em inglês; comentários em português. A
-> entrada em linguagem natural é em português, que é o domínio da aplicação.
+A interface também aceita a frase solta ("gastei 89 reais num teclado no
+crédito do Nubank"): o Gateway manda o texto para a API da Anthropic, recebe um
+comando estruturado e o despacha pelos mesmos RPCs. Nenhum microsserviço sabe
+que existe um modelo de linguagem — chega o mesmo protobuf que chegaria de um
+formulário.
+
+> Código, identificadores e mensagens do backend em inglês; comentários em
+> português. A interface é em português, e traduz as mensagens do backend na
+> hora de exibir (`web/src/shared/messages.ts`) — uma mensagem de protocolo não
+> muda porque a tela mudou de idioma.
+
+| Documento | Para quê |
+|---|---|
+| [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md) | subir tudo pelo Google Cloud Console, clique a clique |
+| [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) | roteiro cronometrado dos 10 minutos de demonstração |
 
 ## Arquitetura
 
 ```
-              vm-client (10.128.0.3)                     vm-server (10.128.0.2)
-        ┌──────────────────────────────┐   HTTP/JSON  ┌────────────────────────────────┐
- texto  │ client.py                    │   + JWT      │ API Gateway (FastAPI)          │
- ─────► │   └─ nlu.py ──► Claude       ├─────────────►│ 0.0.0.0:8000                   │
-        │   └─ period.py               │              │   valida (400) · JWT (401)     │
-        └──────────────────────────────┘              │   JSON ──► protobuf            │
-                                                      │        │ gRPC        │ gRPC    │
-                                  firewall:           │        ▼             ▼         │
-                        tcp:8000 · só 10.128.0.0/9    │  Cartões        Gastos         │
-                        · só tag grpc-server          │  127.0.0.1:50052  127.0.0.1:50051
-                                                      │        ▲    gRPC     │         │
-                                                      │        └─────────────┘         │
-                                                      └────────┬───────────────┬───────┘
-                                                               │  cards        │ expenses
-                                                               ▼               ▼
-                                                      Cloud SQL (PostgreSQL) banco-aula-sd
-                                                      10.115.48.3:5432 · IP privado, via peering
+   navegador                vm-client (10.128.0.3)              vm-server (10.128.0.2)
+  ┌──────────┐         ┌───────────────────────────┐      ┌────────────────────────────────┐
+  │  React   │  HTTP   │ nginx :80                 │      │ API Gateway (FastAPI)          │
+  │  (SPA)   ├────────►│   /       → web/dist      │      │ 0.0.0.0:8000                   │
+  └──────────┘  :80    │   /api/*  → ──────────────┼─────►│   JWT (401) · valida (400)     │
+                       │                           │ JSON │   JSON ──► protobuf            │
+                       │ client.py (REPL, opcional)│ +JWT │   texto ──► Claude ──► comando │
+                       └───────────────────────────┘      │        │ gRPC        │ gRPC    │
+                                                          │        ▼             ▼         │
+      firewall:                                           │  Cartões        Gastos         │
+   tcp:80   ← 0.0.0.0/0      → tag grpc-client            │  127.0.0.1:50052  127.0.0.1:50051
+   tcp:8000 ← 10.128.0.0/9   → tag grpc-server            │        ▲    gRPC     │         │
+                                                          │        └─────────────┘         │
+                                                          └────────┬───────────────┬───────┘
+                                                                   │  cards        │ expenses
+                                                                   ▼               ▼
+                                                          Cloud SQL (PostgreSQL) banco-aula-sd
+                                                          10.115.48.3:5432 · IP privado, via peering
 ```
 
-Quatro saltos, cada um com um protocolo e um motivo:
+Cinco saltos, cada um com um protocolo e um motivo:
 
-1. **Cliente → Gateway: HTTP/JSON com JWT.** É a única porta de entrada. O
+1. **Navegador → nginx: HTTP.** O nginx da `vm-client` serve os arquivos
+   estáticos do build e repassa `/api/*` ao Gateway. É por isso que o navegador
+   vê **uma origem só** e o sistema não depende de CORS.
+2. **nginx → Gateway: HTTP/JSON com JWT.** É a única porta de entrada da API. O
    Gateway escuta em `0.0.0.0:8000`; todo o resto da `vm-server` escuta só em
    `127.0.0.1`.
-2. **Gateway → microsserviços: gRPC/protobuf.** O Gateway desserializa o JSON,
+3. **Gateway → microsserviços: gRPC/protobuf.** O Gateway desserializa o JSON,
    valida, e serializa em protobuf para o serviço dono do dado.
-3. **Gastos → Cartões: gRPC.** Antes de gravar um gasto, o serviço de Gastos
-   pergunta ao de Cartões se o cartão existe. É a comunicação entre
+4. **Gastos → Cartões: gRPC.** Antes de gravar ou alterar um gasto, o serviço de
+   Gastos pergunta ao de Cartões se o cartão existe. É a comunicação entre
    microsserviços do sistema.
-4. **Microsserviços → Cloud SQL: PostgreSQL**, pela rede privada. Cada serviço
+5. **Microsserviços → Cloud SQL: PostgreSQL**, pela rede privada. Cada serviço
    só toca a sua tabela.
 
+**Uma porta aberta para a internet no sistema inteiro:** a 80 da `vm-client`. O
+Gateway só atende de dentro da VPC, os microsserviços só de dentro da própria
+`vm-server`, e o banco não tem endereço público.
+
 **Por que os serviços gRPC escutam só em 127.0.0.1.** O enunciado exige que o
-cliente nunca fale direto com os microsserviços. Firewall não garantiria isso: a
-regra `default-allow-internal` do GCP libera todas as portas entre VMs da VPC.
-Escutando só na interface local, os serviços são inalcançáveis de fora da
+frontend nunca fale direto com os microsserviços. Firewall não garantiria isso:
+a regra `default-allow-internal` do GCP libera todas as portas entre VMs da
+VPC. Escutando só na interface local, os serviços são inalcançáveis de fora da
 `vm-server` — qualquer que seja a regra de firewall.
 
-**A LLM vive no cliente.** O Gateway e os microsserviços recebem JSON e
-protobuf já estruturados; nenhum deles sabe que existe um modelo de linguagem.
+**A LLM vive no Gateway.** Ela entrou na borda, e não mais no cliente, porque a
+chave da API não pode ir para o navegador. Os microsserviços continuam
+recebendo só protobuf: nenhum deles sabe que existe um modelo de linguagem. O
+cliente de terminal (`client/client.py`) segue funcionando com o seu próprio
+interpretador — os dois lados compartilham o mesmo módulo, em `language/`.
 
 ### Banco de dados
 
@@ -81,18 +105,63 @@ senha do banco e o segredo do JWT (em `/opt/sd-gastos-grpc/server.env`,
 legível só por root), e para a `vm-client` a chave da LLM e o login do
 Gateway. Nenhuma das duas recebe o segredo que não usa.
 
+## Frontend
+
+React + TypeScript, compilado pelo Vite e servido como arquivos estáticos pelo
+nginx. **Ele só conhece o Gateway**: todas as chamadas saem de
+`web/src/shared/services/api.ts` para o caminho relativo `/api`, que o nginx
+(em produção) ou o proxy do Vite (em desenvolvimento) repassa. Não há endereço
+de microsserviço em lugar nenhum do código do frontend, nem como haveria — eles
+não aceitam conexão de fora da `vm-server`.
+
+| Tela | O que faz | RPCs por trás |
+|---|---|---|
+| **Login** | troca usuário e senha por um JWT | — (`POST /auth/token`) |
+| **Painel** | totais do período em cartões e gráficos | `SummaryByGroup` ×3, `SearchExpenses`, `ListCards` |
+| **Gastos** | buscar, registrar, **alterar** e **remover** | `SearchExpenses`, `RegisterExpense`, `UpdateExpense`, `DeleteExpense` |
+| **Cartões** | cadastrar, listar e testar um nome | `RegisterCard`, `ListCards`, `ValidateCard` |
+| **Assistente** | a frase em português vira comando e é executada | o RPC que o comando pedir |
+| **Laboratório** | dispara os casos de 401, 400 e 201 e mostra a troca HTTP inteira | vários |
+
+O **Laboratório** existe por causa do critério de avaliação: são doze cenários
+— três de 401, seis de 400 e três do caminho feliz —, cada um com o status que
+se espera dele ao lado do que o Gateway de fato devolveu. Nada ali é simulado — são requisições HTTP de verdade, e o painel da
+direita mostra o cabeçalho de autorização, o corpo enviado e o corpo recebido.
+É também um log vivo: qualquer navegação pelo sistema aparece nele.
+
+O token fica no `sessionStorage` (some quando a aba fecha) e não é enviado por
+cookie, então não há CSRF a tratar. Quando ele vence — uma hora —, a próxima
+chamada volta 401, a camada de API derruba a sessão e a tela de login avisa.
+
+As listas fechadas de categorias, métodos e períodos **não são repetidas no
+frontend**: vêm de `GET /meta`, que as publica a partir dos mesmos tipos que o
+Gateway usa para validar. Uma cópia local sairia de sincronia com a validação
+real na primeira mudança.
+
+Os componentes de interface (`web/src/shared/ui/`) vieram de um projeto
+existente e foram reajustados aqui: paleta nova e uma escala de raio e de
+sombra quase reta — 2px nos controles, 3px nas superfícies, sombra só no que
+de fato flutua (modal e toast). Cantos redondos escondem a grade; com a borda
+quase reta, o alinhamento entre tabela, cartão e formulário fica visível. Tudo
+isso mora em `web/src/shared/ui/tokens.css`, então a decisão é de um arquivo
+só.
+
 ## API Gateway
 
 | Método e rota | Microsserviço | Sucesso |
 |---|---|---|
 | `POST /auth/token` | — (emite o JWT) | 200 |
+| `GET /health` | — | 200 |
+| `GET /meta` | — (listas fechadas para a interface) | 200 |
 | `GET /cards` | Cartões · `ListCards` | 200 |
 | `POST /cards` | Cartões · `RegisterCard` | **201**, ou 200 se já existia |
 | `GET /cards/validate` | Cartões · `ValidateCard` | 200 |
 | `POST /expenses` | Gastos · `RegisterExpense` (→ Cartões · `ValidateCard`) | **201** |
 | `GET /expenses` | Gastos · `SearchExpenses` (stream) | 200 |
 | `GET /expenses/summary` | Gastos · `SummaryByGroup` | 200 |
-| `GET /health` | — | 200 |
+| `PUT /expenses/{id}` | Gastos · `UpdateExpense` (→ Cartões · `ValidateCard`) | 200 |
+| `DELETE /expenses/{id}` | Gastos · `DeleteExpense` | 200 |
+| `POST /nlu/interpret` | Claude, e depois o RPC que o comando pedir | 200 |
 
 Documentação interativa, gerada pelo FastAPI, em `http://<gateway>:8000/docs`.
 
@@ -128,6 +197,8 @@ curl -i localhost:8000/expenses -H "Authorization: Bearer $TOKEN" \
 | `ExpenseService` | `RegisterExpense` | unário | grava o gasto, depois de consultar o `CardService` |
 | | `SearchExpenses` | **streaming** | devolve os gastos um a um |
 | | `SummaryByGroup` | unário | totais por `category`, `card` ou `method` |
+| | `UpdateExpense` | unário | regrava o gasto, revalidando o cartão |
+| | `DeleteExpense` | unário | remove o gasto |
 
 Um cartão é a dupla **(name, method)**: "Nubank credit" e "Nubank debit" são
 registros distintos, o que permite responder "gastos do Nubank no crédito" sem
@@ -138,22 +209,34 @@ ambiguidade.
 Três camadas independentes, porque uma LLM erra e o sistema não pode gravar
 lixo por causa disso:
 
-1. **Restrição na entrada** — o cliente busca a lista real de cartões e a
-   injeta no prompt, junto com uma lista fechada de categorias.
-2. **Verificação antes de agir** — se o comando cita um cartão, o cliente
-   consulta `GET /cards/validate` **antes** de gravar ou buscar. Se o cartão não
-   existir, oferece corrigir (`difflib` no serviço de Cartões resolve
-   "Nubanck" → "Nubank").
+1. **Restrição na entrada** — antes de montar o prompt, o Gateway chama
+   `ListCards` e injeta a lista real de cartões, junto com uma lista fechada de
+   categorias. O modelo escolhe dentro do que existe em vez de inventar.
+2. **Verificação antes de agir** — se o comando cita um cartão, o Gateway
+   chama `ValidateCard` **antes** de gravar ou buscar. Se o cartão não existir,
+   devolve as opções em vez de executar (`difflib` no serviço de Cartões
+   resolve "Nubanck" → "Nubank").
 3. **Garantia no backend** — mesmo que as duas camadas acima falhem, o Gateway
    recusa categoria fora da lista, e o serviço de Gastos recusa gravar se o de
    Cartões não confirmar o cartão. Se o serviço de Cartões estiver fora do ar,
    Gastos recusa em vez de gravar às cegas.
 
+As três valem para os dois interpretadores — o da API da Anthropic e o de
+regras locais —, porque nenhuma delas mora no interpretador.
+
 ### Recuperação: recusar não é o fim
 
-Quando a validação falha, o cliente não descarta o comando — oferece as saídas
-possíveis e completa a operação com a escolha do usuário. As opções vêm do
-campo `suggestions` da validação, e a criação usa o `POST /cards`.
+Quando a validação falha, o comando não é descartado — as saídas possíveis
+voltam junto com ele, e o usuário completa a operação escolhendo uma.
+
+Na web, `POST /nlu/interpret` responde 200 com `status: "needs_card"` (ou
+`"needs_method"`), a mensagem do serviço de Cartões, as `suggestions` e um
+`pending` com o gasto já montado — inclusive **a data já resolvida**, para a
+interface não precisar interpretar "ontem" por conta própria. A tela vira
+botões; escolher um cadastra o cartão (`POST /cards`) e lança o gasto
+(`POST /expenses`), sem redigitar a frase.
+
+No terminal, o mesmo material vira um menu numerado:
 
 ```
 > gastei 55 reais no crédito do Itaú
@@ -179,7 +262,7 @@ menu cancela em vez de executar o comando pela metade.
 ### Datas
 
 O modelo devolve um **rótulo** (`this_month`, `yesterday`), e quem calcula o
-intervalo é o `datetime` em `client/period.py`. Modelos erram aritmética de
+intervalo é o `datetime` em `language/period.py`. Modelos erram aritmética de
 data, e aqui o erro seria silencioso.
 
 Duas defesas concretas nasceram de erros observados em teste, não de suposição:
@@ -189,8 +272,8 @@ Duas defesas concretas nasceram de erros observados em teste, não de suposiçã
   errada em silêncio, então `transaction_date` resolve o período para o seu
   último dia, limitado a hoje.
 - O modelo colocou o tempo no campo `period` em vez de `date_label` num
-  registro. O cliente aceita os dois nomes: depender do modelo acertar o nome
-  do campo é frágil demais para um dado que ninguém confere.
+  registro. Quem despacha aceita os dois nomes: depender do modelo acertar o
+  nome do campo é frágil demais para um dado que ninguém confere.
 
 ## Configuração da LLM
 
@@ -201,21 +284,47 @@ ANTHROPIC_TIMEOUT=30
 ```
 
 A chave sai em `console.anthropic.com` e exige créditos em Billing (pré-pago,
-mínimo US$ 5). Liste os modelos da conta com `python client/nlu.py --models`.
+mínimo US$ 5). Liste os modelos da conta com `python language/nlu.py --models`.
 
 Este projeto usou o Gemini primeiro e migrou por dois motivos medidos: o free
 tier dava **20 requisições por dia** por modelo, e a latência ficava entre **10
 e 25 segundos** com o serviço carregado. Com o Haiku 4.5 a interpretação leva
 **1,8 a 3,7 segundos**, e custa cerca de **US$ 0,0012 por comando**. A troca
-mexeu apenas em `client/nlu.py`.
+mexeu apenas em `language/nlu.py`.
+
+**A chave é opcional.** Sem ela, o Gateway usa o interpretador por regras de
+`language/nlu.py` (`interpret_offline`), que cobre os comandos do roteiro de
+demonstração, e a interface avisa qual dos dois respondeu. Nada da
+demonstração depende da API estar no ar.
 
 ## Rodando localmente
+
+### Com Docker: o sistema inteiro, com PostgreSQL de verdade
+
+É a mesma topologia do GCP, encolhida — o container `web` faz o papel do nginx
+da `vm-client`, `gateway` o da `vm-server`, e `db` o do Cloud SQL. Serve para
+desenvolver e como plano B na apresentação.
+
+```bash
+docker compose up --build
+# abra http://localhost:8080  (usuário demo, senha demo-password)
+```
+
+Repare no que **não** tem porta publicada: `cards`, `expenses` e `db`. Eles só
+existem dentro da rede do compose, do mesmo jeito que nas VMs só existem dentro
+da `vm-server` e da VPC. Para conferir que os dados são reais:
+
+```bash
+docker compose exec db psql -U expenses_app -d expenses -c "SELECT * FROM expenses;"
+```
+
+### Sem Docker: processo a processo
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r server/requirements.txt -r gateway/requirements.txt -r client/requirements.txt
 bash generate_stubs.sh
-cp .env.example .env      # preencha ANTHROPIC_API_KEY, JWT_SECRET, GATEWAY_USER, GATEWAY_PASSWORD
+cp .env.example .env      # preencha JWT_SECRET, GATEWAY_USER, GATEWAY_PASSWORD
 ```
 
 Em um terminal, o backend inteiro — os dois microsserviços e o Gateway, com
@@ -225,14 +334,25 @@ SQLite em `data/`:
 bash run_backend.sh
 ```
 
-Em outro, o cliente:
+Em outro, a interface web:
+
+```bash
+cd web && npm install && npm run dev
+# abra http://localhost:5173
+```
+
+O servidor do Vite repassa `/api` para `localhost:8000`, que é o mesmo papel do
+nginx em produção — por isso o frontend chama o caminho relativo nos dois
+ambientes, e não existe CORS a configurar.
+
+Quem preferir o terminal ao navegador:
 
 ```bash
 python client/client.py --verbose
 ```
 
-Sem chave da Anthropic, use `--offline`: um interpretador por regras locais que
-cobre os comandos do roteiro de demonstração.
+Sem chave da Anthropic, use `--offline`: o mesmo interpretador por regras que o
+Gateway usa quando a chave não está definida.
 
 ### Comandos de exemplo
 
@@ -264,52 +384,76 @@ aparece no log do Gateway, em linhas como
 ## Verificação
 
 ```bash
-python client/period.py          # aritmética de datas, incluindo virada de ano
+python language/period.py        # aritmética de datas, incluindo virada de ano
 python server/test_services.py   # os dois microsserviços por canais gRPC reais
-python gateway/test_gateway.py   # 401, 400, 201 e a tradução JSON -> gRPC
+python gateway/test_gateway.py   # 401, 400, 201, o ciclo do gasto e a rota de NLU
+cd web && npx tsc --noEmit       # tipos do frontend contra o contrato do Gateway
 ```
 
 Os testes sobem os serviços em portas efêmeras e conversam com eles por canais
 de verdade — exercitam serialização e transporte, não só as funções Python. O
-de serviços inclui o caso em que Cartões cai e Gastos precisa recusar.
+de serviços inclui o caso em que Cartões cai e Gastos precisa recusar, e o
+ciclo completo do gasto (criar, alterar, remover). O do Gateway cobre 401 sem
+token, 400 para cada forma de payload inválido, 201 na criação, e a rota de
+linguagem natural pelo caminho offline — que é o que permite rodá-la sem chave
+de API e sem rede.
+
+A verificação que vale mais na apresentação, porém, é a tela do
+**Laboratório**: ela roda os doze cenários contra o sistema que está no ar,
+não contra portas efêmeras de teste.
 
 ## Deploy no GCP
 
+Duas formas, com o mesmo resultado.
+
+**Pelo console**, clique a clique, incluindo a criação do Cloud SQL e das
+regras de firewall: [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md). Os dois
+scripts de inicialização — [`infra/startup-server.sh`](infra/startup-server.sh)
+e [`infra/startup-client.sh`](infra/startup-client.sh) — são feitos para colar
+no campo "Script de inicialização" da tela de criação da VM: cada um tem um
+bloco de CONFIGURAÇÃO no topo e faz o resto sozinho.
+
+**Pela linha de comando**, com o `gcloud` já autenticado:
+
 ```bash
 cp infra/config.sh.example infra/config.sh   # edite o PROJECT
-bash infra/setup_gcp.sh                      # VMs + regra de firewall
-bash infra/deploy.sh                         # clona, instala e sobe
+bash infra/setup_gcp.sh                      # VMs + regras de firewall
+bash infra/deploy.sh                         # clona, instala, compila e sobe
 ```
 
 Na `vm-server` sobem três serviços do systemd — `cards`, `expenses` e
-`gateway` — que voltam sozinhos se a VM reiniciar. Para acompanhar os três
-juntos:
+`gateway` — que voltam sozinhos se a VM reiniciar. Na `vm-client` sobe o nginx
+com o build do frontend. Para acompanhar o servidor:
 
 ```bash
 sudo journalctl -u gateway -u cards -u expenses -f
 ```
 
-A regra de firewall criada pelo `setup_gcp.sh`:
+As regras de firewall criadas pelo `setup_gcp.sh`:
 
 ```
-tcp:8000  ←  source-ranges 10.128.0.0/9  →  target-tags grpc-server
+tcp:80    ←  source-ranges 0.0.0.0/0      →  target-tags grpc-client
+tcp:8000  ←  source-ranges 10.128.0.0/9   →  target-tags grpc-server
 ```
 
-Só tráfego de dentro da VPC, e só para a VM do servidor. Nada fica exposto à
-internet — nem o Gateway, nem o banco.
+A interface web é a única coisa exposta à internet. O Gateway só responde de
+dentro da VPC; os microsserviços, só de dentro da própria `vm-server`; e o
+banco não tem endereço público.
 
 ## Requisitos do Trabalho 2
 
 | Requisito | Onde é atendido |
 |---|---|
-| Frontend que fala só com o Gateway | `client/client.py` — HTTP/JSON para o Gateway; os serviços gRPC nem aceitam conexão de fora da `vm-server` |
+| Interface visual funcional | `web/` — React + TypeScript: painel com gráficos, CRUD de gastos, cartões, assistente e laboratório |
+| Frontend fala **só** com o Gateway | `web/src/shared/services/api.ts` — toda chamada sai para `/api`, que o nginx repassa ao Gateway. Não há endereço de microsserviço no frontend, e eles não aceitam conexão de fora da `vm-server` |
 | API Gateway com framework web | `gateway/app.py` — FastAPI, ponto único de entrada |
 | Mínimo de 2 microsserviços gRPC | `server/cards_service.py` e `server/expenses_service.py` |
-| Comunicação entre microsserviços via gRPC | Gastos chama `CardService.ValidateCard` antes de gravar |
-| Banco de dados real | Cloud SQL PostgreSQL; todas as operações leem e gravam nele |
-| Validação no Gateway: 400 / 201 | modelos Pydantic + tratador de `RequestValidationError`; `POST` retorna 201 |
-| JWT no Gateway: 401 | dependência `require_token` em todas as rotas de negócio |
+| Comunicação entre microsserviços via gRPC | `ExpenseService._validate_card` chama `CardService.ValidateCard` antes de gravar e antes de alterar |
+| Banco de dados real, sem mocks | Cloud SQL PostgreSQL (`server/database.py`); consulta, inserção, **alteração** e remoção passam por ele. Não existe lista em memória em lugar nenhum |
+| Validação no Gateway: 400 / 201 | modelos Pydantic + tratador de `RequestValidationError`; `POST` retorna 201. Demonstrável na tela **Laboratório** |
+| JWT no Gateway: 401 | dependência `require_token` em todas as rotas de negócio, incluindo `/meta` e `/nlu/interpret` |
 | Tradução JSON → gRPC/protobuf | função `call` do Gateway, que registra o tamanho do protobuf de cada chamada |
+| Demonstração de sucesso e de falha | tela **Laboratório**: doze cenários com o status esperado ao lado do obtido |
 
 ## Requisitos do Trabalho 1
 
@@ -318,7 +462,7 @@ internet — nem o Gateway, nem o banco.
 | Contrato `.proto` com estruturas de dados e serviços RPC | `proto/expenses.proto` |
 | Comunicação síncrona e eficiente | RPCs unários + 1 server-streaming (`SearchExpenses`) |
 | Regras de firewall VPC no GCP | `infra/setup_gcp.sh` |
-| Infraestrutura em nuvem (GCP) | 2 VMs em `us-central1-c` + Cloud SQL |
+| Infraestrutura em nuvem (GCP) | 2 VMs + Cloud SQL — veja [`docs/GCP-CONSOLE.md`](docs/GCP-CONSOLE.md) |
 | Código-fonte no GitHub | este repositório |
 
 O enunciado pede **um** repositório contendo os arquivos `.proto` e o código dos
@@ -333,13 +477,30 @@ distintos, o contrato dessincroniza.
 proto/expenses.proto     contrato: CardService e ExpenseService
 generate_stubs.sh        gera os stubs para server/ e gateway/ (fora do git)
 run_backend.sh           sobe o backend local: os dois serviços e o Gateway
+docker-compose.yml       o sistema inteiro em containers, com PostgreSQL
+
 gateway/                 API Gateway: app.py, test_gateway.py
 server/                  microsserviços: cards_service.py, expenses_service.py,
                          common.py, database.py, test_services.py
-client/                  cliente de terminal: client.py, nlu.py, period.py
-infra/                   setup_gcp.sh, deploy.sh e as units do systemd
-                         (cards, expenses, gateway)
+language/                nlu.py e period.py — a camada de linguagem natural,
+                         compartilhada pelo Gateway e pelo cliente de terminal
+client/                  cliente de terminal: client.py
+web/                     frontend React
+  src/config/            marca e tema (cores, fonte, logotipo)
+  src/shared/ui/         design system: Button, Input, Table, Modal, Card...
+  src/shared/services/   api.ts (fetch + JWT + log) e gateway.ts (o contrato)
+  src/features/          uma pasta por tela: auth, dashboard, expenses,
+                         cards, assistant, lab
+
+infra/                   setup_gcp.sh, deploy.sh, os startup scripts do console,
+                         nginx.conf, cloud-sql.sql e as units do systemd
+docs/                    GCP-CONSOLE.md e APRESENTACAO.md
 ```
 
 Os stubs gerados não são versionados — `generate_stubs.sh` os recria. Isso
 evita o problema clássico de stub dessincronizado do `.proto`.
+
+`language/` fica na raiz, fora de `gateway/` e de `client/`, porque os dois a
+usam: o Gateway interpreta o texto que vem da web, o cliente interpreta o que
+vem do REPL. Um prompt só, um interpretador só — duplicá-lo seria garantir que
+as duas pontas divergissem.
