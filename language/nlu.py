@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Microsserviço A — camada de linguagem natural.
+"""Camada de linguagem natural: texto em português -> comando estruturado.
 
-Transforma o texto do usuário num comando estruturado. Nada aqui fala gRPC: a
-saída é um dict {"action": ..., "args": {...}} que o client.py despacha.
+Nada aqui fala gRPC nem HTTP: a saída é um dict {"action": ..., "args": {...}}.
+Quem despacha é quem chamou — o Gateway, em POST /nlu/interpret, ou o cliente
+de terminal.
 
 Pede JSON no próprio prompt em vez de usar tool calling. Faz o mesmo trabalho
 (o modelo escolhe a ação) com muito menos superfície de API para quebrar entre
@@ -20,14 +21,14 @@ import sys
 import time
 import unicodedata
 
-from period import PERIOD_LABELS
+from .period import PERIOD_LABELS
 
 # Migrado do Gemini para a API da Anthropic: o free tier do Gemini dava apenas
 # 20 requisições por dia por modelo, e as chamadas levavam de 10 a 25 segundos
 # quando o serviço estava carregado — inviável numa demonstração ao vivo.
 #
 # Liste os modelos disponíveis na sua conta com:
-#     python client/nlu.py --models
+#     python language/nlu.py --models
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_TIMEOUT = 30.0
 
@@ -459,6 +460,7 @@ if __name__ == "__main__":
             from dotenv import load_dotenv
             load_dotenv(os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+            # (raiz do repositório: language/ fica um nível abaixo dela)
         except ImportError:
             pass
         _list_models()
