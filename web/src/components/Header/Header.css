@@ -1,0 +1,73 @@
+.app-header {
+    height: 52px;
+    flex-shrink: 0;
+    background: var(--brand-header-bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 0 18px;
+    gap: 24px;
+}
+
+/* O logotipo é a marca em duas metades: a segunda num bloco reto de destaque.
+   Reto, não pílula — é o mesmo canto do resto da interface. */
+.app-logo {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.app-logo-mark {
+    font-size: 17px;
+    color: #FFFFFF;
+}
+
+.app-logo-accent {
+    font-size: 17px;
+    color: var(--brand-header-bg);
+    background: var(--brand-accent);
+    padding: 1px 6px;
+    border-radius: var(--ui-radius-sm);
+}
+
+.app-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.app-user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--ui-font-size-xs);
+    color: #A9B6CC;
+}
+
+.app-logout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    background: transparent;
+    color: #C7D2E0;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--ui-radius-sm);
+    padding: 0 10px;
+    font-family: inherit;
+    font-size: var(--ui-font-size-xs);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color var(--ui-transition-base),
+                border-color var(--ui-transition-base),
+                color var(--ui-transition-base);
+}
+
+.app-logout:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #FFFFFF;
+}
+

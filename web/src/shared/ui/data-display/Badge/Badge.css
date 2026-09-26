@@ -1,0 +1,50 @@
+@import "../../tokens.css";
+
+/* Etiqueta reta, sem pílula. O contorno de 1px vale para as três variantes,
+   inclusive a de fundo cheio, para que todas tenham a mesma altura. */
+.ui-badge {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    padding: 1px 6px;
+    font-size: var(--ui-font-size-xs);
+    font-weight: 500;
+    line-height: 1.55;
+    border-radius: var(--ui-radius-sm);
+    white-space: nowrap;
+    font-family: var(--ui-font-family);
+    border: 1px solid transparent;
+}
+
+.ui-badge--round {
+    border-radius: var(--ui-radius-sm);
+}
+
+/* Sutil: fundo lavado e borda da mesma família, que é o que dá o contorno. */
+.ui-badge--primary.ui-badge--subtle { background-color: var(--ui-primary-subtle); color: var(--ui-primary-hover); border-color: #CCFBF1; }
+.ui-badge--success.ui-badge--subtle { background-color: var(--ui-success-subtle); color: var(--ui-success-hover); border-color: #D1FAE5; }
+.ui-badge--danger.ui-badge--subtle  { background-color: var(--ui-danger-subtle);  color: var(--ui-danger-hover);  border-color: #FEE2E2; }
+.ui-badge--warning.ui-badge--subtle { background-color: var(--ui-warning-subtle); color: var(--ui-warning-hover); border-color: #FDE68A; }
+.ui-badge--info.ui-badge--subtle    { background-color: var(--ui-info-subtle);    color: var(--ui-info-hover);    border-color: #DBEAFE; }
+.ui-badge--gray.ui-badge--subtle    { background-color: var(--ui-gray-100);       color: var(--ui-gray-600);      border-color: var(--ui-gray-200); }
+
+/* Cheio: para status que precisa ser lido de longe (o log do Laboratório). */
+.ui-badge--solid {
+    font-family: var(--brand-mono-font);
+    font-weight: 500;
+}
+.ui-badge--primary.ui-badge--solid { background-color: var(--ui-primary); color: var(--ui-white); }
+.ui-badge--success.ui-badge--solid { background-color: var(--ui-success); color: var(--ui-white); }
+.ui-badge--danger.ui-badge--solid  { background-color: var(--ui-danger);  color: var(--ui-white); }
+.ui-badge--warning.ui-badge--solid { background-color: var(--ui-warning); color: var(--ui-white); }
+.ui-badge--info.ui-badge--solid    { background-color: var(--ui-info);    color: var(--ui-white); }
+.ui-badge--gray.ui-badge--solid    { background-color: var(--ui-gray-500); color: var(--ui-white); }
+
+/* Contorno: sem fundo, para etiqueta técnica ao lado de texto. */
+.ui-badge--outline { background-color: transparent; }
+.ui-badge--primary.ui-badge--outline { border-color: var(--ui-primary); color: var(--ui-primary); }
+.ui-badge--success.ui-badge--outline { border-color: var(--ui-success); color: var(--ui-success); }
+.ui-badge--danger.ui-badge--outline  { border-color: var(--ui-danger);  color: var(--ui-danger); }
+.ui-badge--warning.ui-badge--outline { border-color: var(--ui-warning); color: var(--ui-warning); }
+.ui-badge--info.ui-badge--outline    { border-color: var(--ui-info);    color: var(--ui-info); }
+.ui-badge--gray.ui-badge--outline    { border-color: var(--ui-gray-300); color: var(--ui-gray-600); }

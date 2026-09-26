@@ -1,0 +1,102 @@
+@import "../../tokens.css";
+
+.ui-table-container {
+    overflow-x: auto;
+    background-color: var(--ui-white);
+}
+
+/* Fora de um Card sem padding, a tabela precisa da própria moldura. */
+.ui-card:not(.ui-card--no-padding) .ui-table-container {
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+}
+
+.ui-table--full-width {
+    width: 100%;
+}
+
+.ui-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--ui-font-family);
+    font-size: var(--ui-font-size-sm);
+    text-align: left;
+}
+
+/* Cabeçalho sem preenchimento: quem o separa é a linha de baixo. */
+.ui-table-thead {
+    background-color: transparent;
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.ui-table-th {
+    padding: 10px 16px;
+    font-weight: 600;
+    color: var(--ui-gray-400);
+    text-transform: uppercase;
+    letter-spacing: var(--ui-tracking-wide);
+    font-size: var(--ui-font-size-xs);
+    white-space: nowrap;
+}
+
+.ui-table-td {
+    padding: 11px 16px;
+    color: var(--ui-gray-700);
+    border-bottom: 1px solid var(--ui-gray-100);
+    line-height: 1.45;
+}
+
+.ui-table-tr:last-child .ui-table-td {
+    border-bottom: none;
+}
+
+.ui-table-tr {
+    transition: background-color var(--ui-transition-fast);
+}
+
+.ui-table-tbody .ui-table-tr:hover {
+    background-color: var(--ui-gray-50);
+}
+
+.ui-table-tr.is-clickable {
+    cursor: pointer;
+}
+
+.ui-table--align-left { text-align: left; }
+.ui-table--align-center { text-align: center; }
+.ui-table--align-right { text-align: right; }
+
+.ui-table-th--sortable {
+    padding: 0;
+}
+
+.ui-table-sort-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-spacing-2);
+    width: 100%;
+    height: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    transition: color var(--ui-transition-fast);
+}
+
+.ui-table-sort-btn:hover {
+    color: var(--ui-gray-700);
+}
+
+.ui-table-sort-icons {
+    display: flex;
+    flex-direction: column;
+    color: var(--ui-gray-300);
+}
+
+.ui-sort-icon.is-active {
+    color: var(--ui-primary);
+}

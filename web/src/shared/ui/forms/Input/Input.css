@@ -1,0 +1,94 @@
+@import "../../tokens.css";
+
+.ui-input-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-family: var(--ui-font-family);
+}
+
+.ui-input-container--full-width {
+    width: 100%;
+}
+
+/* Rótulo em caixa alta pequena: some como texto e funciona como etiqueta. */
+.ui-input-label {
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-wide);
+    text-transform: uppercase;
+    color: var(--ui-gray-500);
+}
+
+.ui-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.ui-input {
+    width: 100%;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: var(--ui-radius-sm);
+    background-color: var(--ui-white);
+    color: var(--ui-gray-900);
+    font-family: inherit;
+    font-size: var(--ui-font-size-sm);
+    transition: border-color var(--ui-transition-base),
+                box-shadow var(--ui-transition-base);
+    outline: none;
+}
+
+.ui-input::placeholder {
+    color: var(--ui-gray-400);
+}
+
+.ui-input:focus {
+    border-color: var(--ui-primary);
+    box-shadow: 0 0 0 2px var(--ui-primary-subtle);
+}
+
+.ui-input:disabled {
+    background-color: var(--ui-gray-50);
+    color: var(--ui-gray-500);
+    cursor: not-allowed;
+}
+
+.ui-input-wrapper--icon-left .ui-input { padding-left: 30px; }
+.ui-input-wrapper--icon-right .ui-input { padding-right: 30px; }
+
+.ui-input-icon {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ui-gray-400);
+    pointer-events: none;
+}
+
+.ui-input-wrapper--icon-left .ui-input-icon { left: 9px; }
+.ui-input-wrapper--icon-right .ui-input-icon { right: 9px; }
+
+.ui-input-container--error .ui-input {
+    border-color: var(--ui-danger);
+}
+
+.ui-input-container--error .ui-input:focus {
+    box-shadow: 0 0 0 2px var(--ui-danger-subtle);
+}
+
+.ui-input-container--error .ui-input-label {
+    color: var(--ui-danger);
+}
+
+.ui-input-error-message {
+    font-size: var(--ui-font-size-xs);
+    color: var(--ui-danger);
+}
+
+.ui-input-helper-text {
+    font-size: var(--ui-font-size-xs);
+    color: var(--ui-gray-500);
+}

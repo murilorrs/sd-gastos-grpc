@@ -1,0 +1,170 @@
+/* ---- seletor de período ----------------------------------------------
+   Controle segmentado: um bloco só, dividido por linhas de 1px. Cada opção
+   não é um botão-cápsula solto — o conjunto é que é o controle. */
+
+.period-chips {
+    display: flex;
+    background: var(--ui-white);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    overflow: hidden;
+}
+
+.period-chip {
+    border: none;
+    border-left: 1px solid var(--ui-border);
+    background: transparent;
+    font-family: inherit;
+    font-size: var(--ui-font-size-xs);
+    font-weight: 500;
+    color: var(--ui-gray-500);
+    padding: 7px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--ui-transition-fast),
+                color var(--ui-transition-fast);
+}
+
+.period-chip:first-child { border-left: none; }
+
+.period-chip:hover {
+    background: var(--ui-gray-50);
+    color: var(--ui-gray-800);
+}
+
+.period-chip.is-active {
+    background: var(--ui-gray-900);
+    color: var(--ui-white);
+    font-weight: 600;
+}
+
+.period-chip.is-active:hover {
+    background: var(--ui-gray-800);
+    color: var(--ui-white);
+}
+
+/* ---- estados ---------------------------------------------------------- */
+
+.dashboard-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+}
+
+.dashboard-failure {
+    border-color: var(--ui-danger);
+    border-left-width: 2px;
+    color: var(--ui-danger-hover);
+    font-size: var(--ui-font-size-sm);
+    margin-bottom: 12px;
+}
+
+/* ---- gráficos --------------------------------------------------------- */
+
+.chart-empty {
+    margin: 0;
+    padding: 36px 0;
+    text-align: center;
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-400);
+}
+
+.chart-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 148px);
+    gap: 16px;
+    align-items: center;
+}
+
+.chart-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-legend li {
+    display: grid;
+    grid-template-columns: 8px 1fr;
+    column-gap: 8px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--ui-gray-100);
+    font-size: var(--ui-font-size-sm);
+    color: var(--ui-gray-700);
+}
+
+.chart-legend li:last-child { border-bottom: none; }
+
+.chart-swatch {
+    grid-row: span 2;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--ui-radius-xs);
+}
+
+.chart-legend-name { font-weight: 500; }
+
+.chart-legend-value {
+    font-size: var(--ui-font-size-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--ui-gray-500);
+}
+
+.chart-tooltip {
+    background: var(--ui-gray-900);
+    border-radius: var(--ui-radius-sm);
+    padding: 7px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: var(--ui-font-size-xs);
+    color: #CBD5E1;
+}
+
+.chart-tooltip strong {
+    font-size: var(--ui-font-size-sm);
+    font-weight: 600;
+    color: #FFFFFF;
+}
+
+.chart-tooltip .muted {
+    font-size: 10.5px;
+    color: #94A3B8;
+}
+
+/* ---- tabela recente --------------------------------------------------- */
+
+.card-head-link {
+    font-size: var(--ui-font-size-xs);
+    font-weight: 500;
+    color: var(--brand-primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--ui-transition-fast);
+}
+
+.card-head-link:hover { border-bottom-color: currentColor; }
+
+.recent-product {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.recent-product span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.recent-product .ui-badge { flex-shrink: 0; }
+
+.table-tag { margin-left: 6px; }
+
+@media (max-width: 760px) {
+    .chart-split { grid-template-columns: 1fr; }
+}

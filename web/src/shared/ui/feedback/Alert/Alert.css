@@ -1,0 +1,86 @@
+@import "../../tokens.css";
+
+/* Aviso com régua de 2px à esquerda e fundo lavado. A cor vem da paleta de
+   tokens, não de valores soltos — trocar o status muda um token só. */
+.ui-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--ui-border);
+    border-left-width: 2px;
+    border-radius: var(--ui-radius-sm);
+    width: 100%;
+    font-family: var(--ui-font-family);
+    box-sizing: border-box;
+}
+
+.ui-alert__icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+}
+
+.ui-alert__icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.ui-alert__content {
+    flex: 1;
+    min-width: 0;
+}
+
+.ui-alert__title {
+    font-size: var(--ui-font-size-sm);
+    font-weight: 600;
+    margin: 0 0 2px 0;
+    line-height: 1.4;
+}
+
+.ui-alert__body {
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.ui-alert--error {
+    background-color: var(--ui-danger-subtle);
+    border-color: #FEE2E2;
+    border-left-color: var(--ui-danger);
+    color: var(--ui-danger-hover);
+}
+.ui-alert--error .ui-alert__icon { color: var(--ui-danger); }
+
+.ui-alert--success {
+    background-color: var(--ui-success-subtle);
+    border-color: #D1FAE5;
+    border-left-color: var(--ui-success);
+    color: var(--ui-success-hover);
+}
+.ui-alert--success .ui-alert__icon { color: var(--ui-success); }
+
+.ui-alert--warning {
+    background-color: var(--ui-warning-subtle);
+    border-color: #FDE68A;
+    border-left-color: var(--ui-warning);
+    color: var(--ui-warning-hover);
+}
+.ui-alert--warning .ui-alert__icon { color: var(--ui-warning); }
+
+.ui-alert--info {
+    background-color: var(--ui-info-subtle);
+    border-color: #DBEAFE;
+    border-left-color: var(--ui-info);
+    color: var(--ui-info-hover);
+}
+.ui-alert--info .ui-alert__icon { color: var(--ui-info); }
+
+.ui-alert code {
+    font-family: var(--brand-mono-font);
+    font-size: 0.92em;
+    background: rgba(15, 23, 42, 0.06);
+    padding: 0 3px;
+    border-radius: var(--ui-radius-xs);
+}

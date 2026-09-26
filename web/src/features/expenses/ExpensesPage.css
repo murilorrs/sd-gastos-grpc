@@ -1,0 +1,74 @@
+.expenses-filters {
+    margin-bottom: 12px;
+}
+
+.expenses-filters .filter-bar {
+    margin-bottom: 0;
+}
+
+.expenses-table-card {
+    overflow: hidden;
+}
+
+.expenses-table-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--ui-border);
+    font-size: var(--ui-font-size-xs);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-wide);
+    text-transform: uppercase;
+    color: var(--ui-gray-400);
+    background: var(--ui-gray-50);
+}
+
+.expenses-table-head .amount {
+    font-size: var(--ui-font-size-base);
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ui-gray-900);
+}
+
+.expenses-loading {
+    display: flex;
+    justify-content: center;
+    padding: 44px 0;
+}
+
+.expense-product {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.expense-product strong {
+    font-weight: 500;
+    color: var(--ui-gray-900);
+}
+
+.expense-product .muted {
+    font-size: var(--ui-font-size-xs);
+    max-width: 38ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.expense-actions {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.confirm-text {
+    margin: 0;
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.6;
+    color: var(--ui-gray-600);
+}
+
+.confirm-text strong {
+    color: var(--ui-gray-900);
+    font-weight: 600;
+}
