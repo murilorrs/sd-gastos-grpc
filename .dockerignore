@@ -1,0 +1,13 @@
+.git
+.venv
+data
+node_modules
+web/node_modules
+web/dist
+*.db
+.env
+infra/config.sh
+server.env
+**/__pycache__
+**/*_pb2.py
+**/*_pb2_grpc.py

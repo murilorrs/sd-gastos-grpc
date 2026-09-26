@@ -40,6 +40,28 @@ else
     --description="API gateway only inside the VPC, only for VMs tagged grpc-server"
 fi
 
+# ---------------------------------------------------------------------------
+# Regra de firewall do frontend.
+#
+# A vm-client publica a interface web na porta 80, e é a única porta do sistema
+# aberta para a internet — é por ela que o navegador da apresentação entra. O
+# Gateway continua alcançável só de dentro da VPC, e os microsserviços gRPC,
+# só de dentro da própria vm-server.
+# ---------------------------------------------------------------------------
+if gcloud compute firewall-rules describe allow-web-external --quiet >/dev/null 2>&1; then
+  echo "==> firewall rule allow-web-external already exists"
+else
+  echo "==> creating firewall rule allow-web-external"
+  gcloud compute firewall-rules create allow-web-external \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --rules=tcp:80 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=grpc-client \
+    --description="Web frontend (nginx) on the client VM - the only port open to the internet"
+fi
+
 create_vm() {
   local name=$1 tag=$2
   if gcloud compute instances describe "$name" --zone="$ZONE" --quiet >/dev/null 2>&1; then
@@ -73,8 +95,9 @@ echo
 echo "==> instances"
 gcloud compute instances list --zones="$ZONE"
 echo
-echo "==> firewall rule"
-gcloud compute firewall-rules describe allow-gateway-internal \
+echo "==> firewall rules"
+gcloud compute firewall-rules list \
+  --filter="name=(allow-gateway-internal,allow-web-external)" \
   --format="table(name, sourceRanges.list(), targetTags.list(), allowed[].map().firewall_rule().list())"
 echo
 echo "Next step:  bash infra/deploy.sh"
