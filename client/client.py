@@ -24,7 +24,7 @@ HELP = """
 Type commands in Portuguese. Examples:
 
   cadastra o Nubank no crédito e no débito
-  gastei 89 reais num teclado mecânico no crédito do Nubank
+  gastei 67 reais num teclado mecânico no crédito do Nubank
   almoço de 42 reais no débito do Itaú ontem
   me mostra tudo que eu gastei no Nubank no crédito esse mês
   quanto gastei em tecnologia?
