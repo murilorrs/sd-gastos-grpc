@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""Microsserviço A — camada de linguagem natural.
-
-Transforma o texto do usuário num comando estruturado. Nada aqui fala gRPC: a
-saída é um dict {"action": ..., "args": {...}} que o client.py despacha.
-
-Pede JSON no próprio prompt em vez de usar tool calling. Faz o mesmo trabalho
-(o modelo escolhe a ação) com muito menos superfície de API para quebrar entre
-versões do SDK.
-
-O prompt é escrito em português, o mesmo idioma dos comandos que ele interpreta.
-As chaves e os valores do JSON continuam em inglês porque são o contrato com o
-código — trocá-los quebraria o despacho no client.py.
-"""
+"""Interpretação de linguagem natural: texto em português vira comando estruturado."""
 
 import json
 import os
@@ -20,25 +8,13 @@ import sys
 import time
 import unicodedata
 
-from period import PERIOD_LABELS
-
-# Migrado do Gemini para a API da Anthropic: o free tier do Gemini dava apenas
-# 20 requisições por dia por modelo, e as chamadas levavam de 10 a 25 segundos
-# quando o serviço estava carregado — inviável numa demonstração ao vivo.
-#
-# Liste os modelos disponíveis na sua conta com:
-#     python client/nlu.py --models
+from .period import PERIOD_LABELS
 DEFAULT_MODEL = "claude-haiku-4-5"
 DEFAULT_TIMEOUT = 30.0
 
 
 def model_name():
-    """O modelo em uso, lido a cada chamada — nunca na importação.
-
-    O client.py carrega o .env dentro de main(), depois de já ter importado
-    este módulo. Uma constante avaliada no import ignoraria o arquivo inteiro,
-    e o cliente rodaria com o padrão do código sem ninguém perceber.
-    """
+    """O modelo em uso, lido a cada chamada — nunca na importação."""
     return os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL)
 
 
@@ -175,11 +151,7 @@ def explain(error):
 
 
 def _first_text(message):
-    """O texto da resposta, ignorando blocos de raciocínio que vêm antes.
-
-    Com o pensamento ligado, content[0] pode ser um bloco thinking — pegar o
-    índice zero às cegas quebraria de forma intermitente.
-    """
+    """O texto da resposta, ignorando blocos de raciocínio que vêm antes."""
     for block in message.content:
         if getattr(block, "type", None) == "text":
             return block.text
@@ -187,19 +159,9 @@ def _first_text(message):
 
 
 def interpret(text, cards, today, model=None):
-    """Texto -> {"action": ..., "args": {...}} usando a API da Anthropic.
-
-    `cards` é [(name, [rótulos de método])], vindo do RPC ListCards.
-
-    Só levanta o erro se todas as tentativas falharem — aí o client.py cai no
-    interpretador offline.
-    """
+    """Texto -> {"action": ..., "args": {...}} usando a API da Anthropic."""
     prompt = build_prompt(text, cards, today)
     name = model or model_name()
-
-    # A extração é simples e a lista de opções é fechada: esforço baixo entrega
-    # o mesmo resultado gastando menos tokens e respondendo mais rápido. Haiku
-    # não aceita o parâmetro, então ele só vai quando o modelo suporta.
     options = {}
     if not name.startswith("claude-haiku"):
         options["output_config"] = {"effort": "low"}
@@ -237,18 +199,6 @@ def _load_json(raw):
     command.setdefault("args", {})
     return command
 
-
-# --------------------------------------------------------------------------
-# Offline fallback
-#
-# Não é uma segunda implementação "por precaução": é o seguro contra o maior
-# risco do projeto, que é a API da LLM estar fora do ar, sem créditos ou
-# inalcançável pela rede no dia da apresentação. Cobre os comandos do roteiro
-# de demonstração, não o português inteiro.
-#
-# As listas de palavras abaixo estão em português porque são dados linguísticos
-# do idioma que o usuário fala, não identificadores de código.
-# --------------------------------------------------------------------------
 
 _AMOUNT = re.compile(r"(\d+(?:[.,]\d{1,2})?)")
 
@@ -338,10 +288,6 @@ def interpret_offline(text, cards, today):
     if not amounts:
         return {"action": "unknown",
                 "args": {"reason": "no amount found in the command"}}
-
-    # Repassa o rótulo como veio, mesmo sendo de período ("mês passado"): quem
-    # o converte numa data única é period.transaction_date. Forçar "today" aqui
-    # descartaria a informação e dataria o gasto errado em silêncio.
     return {"action": "register_expense", "args": {
         "product": _find_product(plain, card),
         "description": text.strip(),
@@ -372,11 +318,7 @@ _CARD_COMMAND_NOISE = _NOISE | {
 
 
 def _find_new_cards(text, plain):
-    """Extrai pares (nome, método) de um comando de cadastro.
-
-    Heurística: palavras capitalizadas no texto original são nomes de cartão; o
-    método vem da palavra crédito/débito mais próxima à direita.
-    """
+    """Extrai pares (nome, método) de um comando de cadastro."""
     names = re.findall(r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ]{2,})", text)
     if not names:
         # Comando todo em minúsculas ("cadastra o itau no debito"): sobra o que
@@ -459,6 +401,7 @@ if __name__ == "__main__":
             from dotenv import load_dotenv
             load_dotenv(os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+            # (raiz do repositório: language/ fica um nível abaixo dela)
         except ImportError:
             pass
         _list_models()

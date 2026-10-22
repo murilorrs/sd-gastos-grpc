@@ -1,0 +1,16 @@
+@import "../../tokens.css";
+
+/* A superfície base. Separada do fundo por uma linha de 1px, não por sombra. */
+.ui-card {
+    background: var(--ui-white);
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-lg);
+    padding: 20px;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ui-card--no-padding {
+    padding: 0;
+}

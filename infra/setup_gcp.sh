@@ -13,18 +13,6 @@ source ./config.sh
 gcloud config set project "$PROJECT" --quiet
 gcloud services enable compute.googleapis.com --quiet
 
-# ---------------------------------------------------------------------------
-# Regra de firewall do API Gateway.
-#
-# Desde o Trabalho 2, a única porta da vm-server que atende quem vem de fora
-# dela é a 8000 do Gateway; os microsserviços gRPC escutam só em 127.0.0.1.
-# As duas restrições são o que faz esta regra significar alguma coisa:
-#   --source-ranges  só aceita tráfego da faixa interna da VPC (nada da internet)
-#   --target-tags    só se aplica às VMs marcadas como grpc-server
-#
-# (A regra allow-grpc-internal, da porta 50051, era do Trabalho 1, quando o
-# cliente falava gRPC direto com o servidor. Não é mais usada.)
-# ---------------------------------------------------------------------------
 GATEWAY_PORT=8000
 if gcloud compute firewall-rules describe allow-gateway-internal --quiet >/dev/null 2>&1; then
   echo "==> firewall rule allow-gateway-internal already exists"
@@ -38,6 +26,50 @@ else
     --source-ranges=10.128.0.0/9 \
     --target-tags=grpc-server \
     --description="API gateway only inside the VPC, only for VMs tagged grpc-server"
+fi
+
+if gcloud compute firewall-rules describe allow-web-external --quiet >/dev/null 2>&1; then
+  echo "==> firewall rule allow-web-external already exists"
+else
+  echo "==> creating firewall rule allow-web-external"
+  gcloud compute firewall-rules create allow-web-external \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --rules=tcp:80 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=grpc-client \
+    --description="Web frontend (nginx) on the client VM - the only port open to the internet"
+fi
+
+if gcloud compute firewall-rules describe allow-grpc-internal --quiet >/dev/null 2>&1; then
+  echo "==> firewall rule allow-grpc-internal already exists"
+else
+  echo "==> creating firewall rule allow-grpc-internal"
+  gcloud compute firewall-rules create allow-grpc-internal \
+    --network=default \
+    --action=allow \
+    --direction=ingress \
+    --priority=800 \
+    --rules=tcp:50051,tcp:50052 \
+    --source-tags=grpc-server,grpc-service \
+    --target-tags=grpc-service \
+    --description="gRPC microservices: only the gateway and each other"
+fi
+
+if gcloud compute firewall-rules describe deny-grpc-external --quiet >/dev/null 2>&1; then
+  echo "==> firewall rule deny-grpc-external already exists"
+else
+  echo "==> creating firewall rule deny-grpc-external"
+  gcloud compute firewall-rules create deny-grpc-external \
+    --network=default \
+    --action=deny \
+    --direction=ingress \
+    --priority=900 \
+    --rules=tcp:50051,tcp:50052 \
+    --source-ranges=0.0.0.0/0 \
+    --target-tags=grpc-service \
+    --description="Everyone else is refused, including other VMs in the VPC"
 fi
 
 create_vm() {
@@ -66,6 +98,8 @@ create_vm() {
 
 # A vm-client recebe um IP externo efêmero por padrão, e precisa dele para
 # alcançar a API da LLM. A vm-server não depende de saída para a internet.
+create_vm "$VM_CARDS" grpc-service
+create_vm "$VM_EXPENSES" grpc-service
 create_vm "$VM_SERVER" grpc-server
 create_vm "$VM_CLIENT" grpc-client
 
@@ -73,8 +107,9 @@ echo
 echo "==> instances"
 gcloud compute instances list --zones="$ZONE"
 echo
-echo "==> firewall rule"
-gcloud compute firewall-rules describe allow-gateway-internal \
-  --format="table(name, sourceRanges.list(), targetTags.list(), allowed[].map().firewall_rule().list())"
+echo "==> firewall rules"
+gcloud compute firewall-rules list \
+  --filter="name=(allow-gateway-internal,allow-web-external,allow-grpc-internal,deny-grpc-external)" \
+  --format="table(name, priority, sourceRanges.list(), sourceTags.list(), targetTags.list(), allowed[].map().firewall_rule().list(), denied[].map().firewall_rule().list())"
 echo
 echo "Next step:  bash infra/deploy.sh"

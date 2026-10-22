@@ -1,10 +1,4 @@
-"""Converte rótulos de período em datas concretas.
-
-O modelo devolve um rótulo ("this_month"); quem faz a conta é o datetime.
-Modelos de linguagem erram aritmética de data com frequência — principalmente
-virada de mês e de ano — e aqui o erro seria silencioso: a consulta traria o
-intervalo errado sem nenhum aviso.
-"""
+"""Converte rótulos de período em datas."""
 
 from datetime import date, timedelta
 
@@ -29,10 +23,7 @@ def _last_day(value):
 
 
 def resolve(label, today=None):
-    """Rótulo -> (start_date, end_date) em YYYY-MM-DD.
-
-    ("", "") significa sem restrição de data.
-    """
+    """Rótulo -> (start_date, end_date) em YYYY-MM-DD."""
     today = today or date.today()
 
     if label == "today":
@@ -59,13 +50,7 @@ def resolve(label, today=None):
 
 
 def transaction_date(label, today=None):
-    """Rótulo -> a data em que o gasto aconteceu (YYYY-MM-DD).
-
-    O prompt pede rótulos de um único dia, mas o modelo às vezes devolve um de
-    período ("paguei a farmácia mês passado" -> last_month). Cair para hoje
-    nesse caso gravaria a data errada em silêncio, então o período vira o seu
-    último dia — limitado a hoje, para nunca datar um gasto no futuro.
-    """
+    """Rótulo -> a data em que o gasto aconteceu (YYYY-MM-DD)."""
     today = today or date.today()
     if not label or label in _DAY_OFFSET:
         return (today - timedelta(days=_DAY_OFFSET.get(label or "today", 0))).isoformat()

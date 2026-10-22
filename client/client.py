@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""Cliente de terminal com entrada em linguagem natural.
-
-Fala só com o API Gateway, por HTTP/JSON e com um JWT — nunca direto com os
-microsserviços gRPC, que nem aceitam conexões de fora da vm-server.
-
-Fluxo de cada comando digitado:
-
-    texto  ->  Claude (nlu.py)  ->  {"action", "args"}
-                                        |
-                                        v  HTTP/JSON + Authorization: Bearer
-                          GET /cards/validate    <- barra cartão inventado
-                                        |
-                                        v
-              POST /expenses  |  GET /expenses  |  GET /expenses/summary
-
-O Gateway traduz cada chamada para gRPC. Nenhum serviço atrás dele sabe que
-existe uma LLM.
-"""
+"""Cliente de terminal. Fala HTTP com o Gateway."""
 
 import argparse
 import getpass
@@ -30,8 +13,9 @@ import urllib.request
 import warnings
 from datetime import date
 
-import nlu
-import period
+# O pacote language/ fica na raiz do repositório, um nível acima de client/.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from language import nlu, period   # noqa: E402
 
 METHOD_LABEL = {"": "-", None: "-", "CREDIT": "credit", "DEBIT": "debit"}
 METHODS = ("CREDIT", "DEBIT")
@@ -117,9 +101,6 @@ class App:
     def __init__(self, gateway, offline=False, verbose=False):
         self.gateway = gateway
         self.offline = offline
-        # Desligado por padrão: o uso normal quer ver só o resultado. Ligue com
-        # :verbose para a apresentação, onde o comando estruturado e os tempos
-        # são justamente o que se quer mostrar.
         self.verbose = verbose
         self.cards = []
         self.reload_cards()
@@ -127,11 +108,7 @@ class App:
     # ---------- plumbing ----------
 
     def reload_cards(self):
-        """Alimenta o prompt do modelo com os cartões que existem de verdade.
-
-        Primeira das três camadas contra alucinação: o modelo escolhe dentro de
-        uma lista real em vez de inventar um nome.
-        """
+        """Alimenta o prompt do modelo com os cartões que existem de verdade."""
         cards = self.gateway.get("/cards")["cards"]
         self.cards = [(c["name"], c["methods"]) for c in cards]
 
@@ -149,11 +126,7 @@ class App:
     # ---------- card resolution ----------
 
     def _ask(self, title, options):
-        """Menu numerado. `options` é [(label, value)]. None = cancelado.
-
-        Sem terminal interativo (stdin redirecionado), o EOFError cai em
-        cancelamento — o comando não é executado pela metade.
-        """
+        """Menu numerado. `options` é [(label, value)]. None = cancelado."""
         print("  %s" % title)
         for number, (label, _) in enumerate(options, 1):
             print("    %d) %s" % (number, label))
@@ -171,14 +144,7 @@ class App:
             print("  enter a number from 0 to %d" % len(options))
 
     def _resolve_card(self, name, method, for_registration):
-        """Garante um par (cartão, método) que existe de verdade.
-
-        Segunda camada contra alucinação: pergunta ao sistema antes de agir.
-        Quando o cartão não confere, em vez de só recusar, oferece ao usuário
-        corrigir para um cartão existente ou cadastrar o novo e lançar nele.
-
-        Retorna (name, method), ou None se o usuário cancelar.
-        """
+        """Garante um par (cartão, método) que existe de verdade."""
         validation = self.gateway.get("/cards/validate",
                                       {"name": name, "method": method or None})
 
@@ -257,9 +223,6 @@ class App:
             print("  %-14s %s" % (name, ", ".join(METHOD_LABEL[m] for m in methods)))
 
     def register_expense(self, args):
-        # Checagens locais antes de qualquer chamada: erram rápido, respondem
-        # numa linha e não gastam uma ida ao servidor para dizer o óbvio. O
-        # Gateway valida tudo de novo — ele não pode confiar em quem chama.
         amount = float(args.get("amount") or 0)
         if amount <= 0:
             print("  x missing amount — say how much it cost")
@@ -278,10 +241,6 @@ class App:
             print("  cancelled, nothing was saved")
             return
         card, method = resolved
-
-        # O modelo às vezes põe o tempo em "period" mesmo num registro, apesar
-        # do prompt. Aceitar os dois campos evita datar o gasto como hoje por
-        # causa de um nome de campo — um erro que passaria despercebido.
         label = args.get("date_label") or args.get("period")
         body = {
             "product": args.get("product", ""),
@@ -441,13 +400,7 @@ def repl(app, address):
 
 
 def silence_known_warnings():
-    """Cala avisos que não indicam problema, para a saída ficar legível.
-
-    O urllib3 reclama que o macOS compila o módulo ssl contra LibreSSL em vez
-    de OpenSSL. É do ambiente local; na VM (Debian 12) nem aparece.
-
-    Fica só aqui, no ponto de entrada da CLI. Nenhum módulo mexe em warnings.
-    """
+    """Cala avisos que não indicam problema, para a saída ficar legível."""
     warnings.filterwarnings("ignore", message=".*OpenSSL.*")
 
 

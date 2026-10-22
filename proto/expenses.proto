@@ -1,9 +1,5 @@
-// Contrato entre o Microsserviço A (cliente) e o Microsserviço B (servidor).
-// Os dois lados compilam este arquivo e passam a falar exatamente a mesma língua.
-//
-// Os números (= 1, = 2, ...) não são valores: são a identidade de cada campo no
-// binário do Protocol Buffers. O nome do campo nunca vai para a rede — é por isso
-// que a mensagem é compacta. Nunca reutilize um número já usado.
+// Contrato compartilhado pelo Gateway e pelos microsserviços.
+// Os números dos campos são a identidade deles no binário: nunca reutilize um.
 
 syntax = "proto3";
 
@@ -17,9 +13,6 @@ enum PaymentMethod {
   DEBIT  = 2;
 }
 
-// Um cartão é a dupla (nome, método). "Nubank crédito" e "Nubank débito" são
-// registros distintos — é isso que permite responder "gastos do Nubank no
-// crédito" sem ambiguidade.
 message Card {
   string name = 1;
   repeated PaymentMethod methods = 2;
@@ -62,9 +55,6 @@ message ListCardsResponse {
   repeated Card cards = 1;
 }
 
-// Chamada ANTES de registrar ou consultar, para que um cartão inventado pela
-// LLM nunca chegue a virar uma operação no banco. Quem chama: o cliente (para
-// oferecer correção ao usuário) e o serviço de Gastos (para decidir se grava).
 message ValidateCardRequest {
   string        name   = 1;
   PaymentMethod method = 2;  // 0 = valida apenas o nome do cartão
@@ -91,6 +81,25 @@ message RegisterExpenseResponse {
   string  message = 3;
 }
 
+message UpdateExpenseRequest {
+  int32         id          = 1;
+  string        product     = 2;
+  string        description = 3;
+  double        amount      = 4;
+  string        card        = 5;
+  PaymentMethod method      = 6;
+  string        category    = 7;
+  string        date        = 8;  // YYYY-MM-DD; vazio = mantém a data atual
+}
+
+message DeleteExpenseRequest {
+  int32 id = 1;
+}
+message DeleteExpenseResponse {
+  bool   ok      = 1;
+  string message = 2;
+}
+
 message GroupTotal {
   string key    = 1;
   double total  = 2;
@@ -105,10 +114,6 @@ message SummaryResponse {
   double              grand_total = 2;
 }
 
-// Dois microsserviços, dois contratos. Eles compartilham as mensagens acima,
-// mas cada um é dono dos seus dados: Cartões guarda os cartões, Gastos guarda
-// os gastos, e Gastos só sabe se um cartão existe perguntando a Cartões.
-
 // Microsserviço de Cartões (porta 50052).
 service CardService {
   rpc RegisterCard    (RegisterCardRequest)    returns (RegisterCardResponse);
@@ -120,10 +125,10 @@ service CardService {
 service ExpenseService {
   rpc RegisterExpense (RegisterExpenseRequest) returns (RegisterExpenseResponse);
 
-  // server-streaming: o servidor devolve os gastos um a um, conforme os
-  // encontra, em vez de montar a lista inteira na memória. É o streaming
-  // do HTTP/2 aparecendo no contrato.
   rpc SearchExpenses  (Filter)                 returns (stream Expense);
 
   rpc SummaryByGroup  (SummaryRequest)         returns (SummaryResponse);
+
+  rpc UpdateExpense   (UpdateExpenseRequest)   returns (RegisterExpenseResponse);
+  rpc DeleteExpense   (DeleteExpenseRequest)   returns (DeleteExpenseResponse);
 }

@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Verificação executável dos dois microsserviços.
-
-Sobe o serviço de Cartões e o de Gastos em portas efêmeras, com bancos em
-memória, e os exercita por canais gRPC de verdade — inclusive a chamada que o
-serviço de Gastos faz ao de Cartões antes de gravar. Testa serialização e
-transporte, não só as funções Python.
-
-    python server/test_services.py
-"""
+"""Testes dos dois microsserviços por canais gRPC reais."""
 
 import grpc
 
@@ -18,11 +10,7 @@ import expenses_service
 
 
 def start_services():
-    """Sobe os dois serviços.
-
-    Devolve (stub de cartões, stub de gastos, parar, servidor de cartões,
-    endereços {"cards": ..., "expenses": ...}).
-    """
+    """Sobe os dois serviços."""
     cards_server, cards_port = cards_service.create_server(":memory:", "localhost:0")
     cards_server.start()
     expenses_server, expenses_port = expenses_service.create_server(
@@ -164,6 +152,49 @@ def check(cards, expenses):
 
     # O DROP TABLE não passou: os dados continuam lá.
     assert len(list(expenses.SearchExpenses(expenses_pb2.Filter()))) == 3
+
+    # --- update (revalida o cartão, como o registro) ------------------------
+    changed = expenses.UpdateExpense(expenses_pb2.UpdateExpenseRequest(
+        id=1, product="lunch", amount=55.5, card="itau",
+        method=expenses_pb2.DEBIT, category="food", date="2026-09-06"))
+    assert changed.ok, changed
+    assert changed.expense.card == "Itau", changed.expense.card   # grafia cadastrada
+    assert changed.expense.amount == 55.5 and changed.expense.id == 1
+
+    # A alteração foi para o banco, não só para a resposta.
+    stored = [e for e in expenses.SearchExpenses(expenses_pb2.Filter()) if e.id == 1]
+    assert stored[0].product == "lunch" and stored[0].category == "food", stored[0]
+
+    # Trocar para um cartão inexistente é recusado pelo serviço de Cartões.
+    refused_edit = expenses.UpdateExpense(expenses_pb2.UpdateExpenseRequest(
+        id=1, product="lunch", amount=55.5, card="Bradesco",
+        method=expenses_pb2.CREDIT, category="food"))
+    assert not refused_edit.ok and "Bradesco" in refused_edit.message, refused_edit
+
+    # E a recusa não mexeu no registro.
+    stored = [e for e in expenses.SearchExpenses(expenses_pb2.Filter()) if e.id == 1]
+    assert stored[0].card == "Itau", stored[0]
+
+    for bad_id in (999, 0):
+        try:
+            expenses.UpdateExpense(expenses_pb2.UpdateExpenseRequest(
+                id=bad_id, product="x", amount=1.0, card="Nubank",
+                method=expenses_pb2.CREDIT))
+            raise AssertionError("update of id=%d should have failed" % bad_id)
+        except grpc.RpcError as error:
+            assert error.code() in (grpc.StatusCode.NOT_FOUND,
+                                    grpc.StatusCode.INVALID_ARGUMENT), error.code()
+
+    # --- delete -------------------------------------------------------------
+    removed = expenses.DeleteExpense(expenses_pb2.DeleteExpenseRequest(id=1))
+    assert removed.ok, removed
+    assert len(list(expenses.SearchExpenses(expenses_pb2.Filter()))) == 2
+
+    try:
+        expenses.DeleteExpense(expenses_pb2.DeleteExpenseRequest(id=1))
+        raise AssertionError("deleting twice should have failed")
+    except grpc.RpcError as error:
+        assert error.code() == grpc.StatusCode.NOT_FOUND, error.code()
 
 
 def check_cards_down():

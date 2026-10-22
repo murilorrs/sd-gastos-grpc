@@ -1,14 +1,15 @@
 [Unit]
 Description=API gateway (HTTP/JSON, 0.0.0.0:8000) in front of the gRPC microservices
-After=network-online.target cards.service expenses.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/sd-gastos-grpc/gateway
-# JWT_SECRET, GATEWAY_USER e GATEWAY_PASSWORD vêm daqui.
+# JWT_SECRET, GATEWAY_USER, GATEWAY_PASSWORD e os endereços dos
+# microsserviços (CARDS_ADDR, EXPENSES_ADDR) vêm daqui.
 EnvironmentFile=-/opt/sd-gastos-grpc/server.env
-# 0.0.0.0: é o único processo da vm-server que aceita conexões de fora dela.
+# 0.0.0.0: é o único processo desta VM, e a única porta de entrada da API.
 ExecStart=/opt/sd-gastos-grpc/.venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=3

@@ -1,10 +1,15 @@
 # Copie para infra/config.sh e ajuste. O config.sh fica fora do git.
 PROJECT="paste-your-project-id-here"
-ZONE="southamerica-east1-a"      # São Paulo: menor latência na demo ao vivo
+ZONE="us-central1-a"             # a mesma região do Cloud SQL do projeto
 MACHINE_TYPE="e2-small"
 REPO_URL="https://github.com/murilorrs/sd-gastos-grpc.git"
 
+# Quatro VMs: cada serviço na sua, como no desenho de arquitetura da
+# disciplina. A ordem de criação importa — Cartões não depende de ninguém,
+# Gastos precisa do endereço de Cartões, o Gateway precisa dos dois, e a
+# vm-client precisa do Gateway.
+VM_CARDS="vm-cards"
+VM_EXPENSES="vm-expenses"
 VM_SERVER="vm-server"
 VM_CLIENT="vm-client"
-PORT="50051"
 TARGET_DIR="/opt/sd-gastos-grpc"

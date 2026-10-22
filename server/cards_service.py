@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Microsserviço de Cartões — dono da tabela de cartões.
-
-Responde a quem precisar saber que cartões existem: o Gateway (para o usuário
-cadastrar, listar e corrigir cartões) e o microsserviço de Gastos (que pergunta
-aqui antes de gravar qualquer gasto).
-"""
+"""Microsserviço de Cartões."""
 
 import grpc
 

@@ -1,0 +1,49 @@
+@import "../../tokens.css";
+
+.ui-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px var(--ui-spacing-6);
+    text-align: center;
+    font-family: var(--ui-font-family);
+}
+
+.ui-empty-state-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--ui-spacing-4);
+    background-color: var(--ui-gray-50);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-gray-400);
+    border-radius: var(--ui-radius-sm);
+}
+
+.ui-empty-state-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.ui-empty-state-title {
+    margin: 0;
+    font-size: var(--ui-font-size-base);
+    font-weight: 600;
+    letter-spacing: var(--ui-tracking-tight);
+    color: var(--ui-gray-800);
+}
+
+.ui-empty-state-description {
+    margin: 6px 0 0;
+    font-size: var(--ui-font-size-sm);
+    line-height: 1.55;
+    color: var(--ui-gray-500);
+    max-width: 44ch;
+}
+
+.ui-empty-state-action {
+    margin-top: var(--ui-spacing-5);
+}

@@ -1,40 +1,15 @@
-"""Persistência dos microsserviços: um store para cada um.
-
-Cada serviço é dono de uma tabela e só toca a sua. O de Gastos não lê a tabela
-de cartões — quando precisa saber se um cartão existe, pergunta ao serviço de
-Cartões via gRPC. Por isso não há chave estrangeira entre as tabelas: ela
-acoplaria os dois serviços por baixo do contrato.
-
-Na nuvem o banco é um Cloud SQL (PostgreSQL) com IP privado; localmente e nos
-testes é SQLite, que não exige servidor nem rede. As consultas são as mesmas
-nos dois — só a coluna de id e o driver mudam.
-
-Esta camada não sabe nada de gRPC — recebe e devolve tipos Python.
-"""
+"""Acesso a dados: um store por microsserviço. PostgreSQL, ou SQLite em desenvolvimento."""
 
 import datetime
 import difflib
 import os
 import sqlite3
 import threading
-
-# Colunas pelas quais o SummaryByGroup pode agrupar. O valor entra numa cláusula
-# GROUP BY, então precisa vir de uma lista fechada: concatenar entrada do usuário
-# no SQL seria injeção.
 VALID_GROUPS = ("category", "card", "method")
 
 
 class _Store:
-    """Uma conexão compartilhada, protegida por lock.
-
-    O servidor gRPC atende em várias threads (ThreadPoolExecutor). O lock
-    serializa o acesso sem pool de conexões — o volume deste projeto não
-    justifica um.
-
-    path=None usa PostgreSQL, com a conexão lida das variáveis PGHOST, PGPORT,
-    PGDATABASE, PGUSER e PGPASSWORD (a convenção padrão do libpq). Qualquer
-    outro valor é o caminho de um arquivo SQLite (":memory:" nos testes).
-    """
+    """Uma conexão compartilhada, protegida por lock."""
 
     SCHEMA = ()  # instruções CREATE; {id_column} é trocado conforme o banco
 
@@ -67,11 +42,7 @@ class _Store:
         self._con.close()
 
     def _run(self, sql, params=()):
-        """Executa uma instrução e devolve o cursor. Chamar com o lock pego.
-
-        As consultas usam `?` como marcador; o psycopg espera `%s`. Nenhuma
-        consulta deste arquivo tem `?` literal, então a troca é segura.
-        """
+        """Executa uma instrução e devolve o cursor. Chamar com o lock pego."""
         if not self._postgres:
             return self._con.execute(sql, params)
         import psycopg
@@ -86,12 +57,7 @@ class _Store:
 
 
 class CardStore(_Store):
-    """Dados do microsserviço de Cartões.
-
-    O nome do cartão é comparado sem diferenciar maiúsculas ("nubank" e
-    "Nubank" são o mesmo cartão). LOWER() nas duas pontas faz isso nos dois
-    bancos; a grafia gravada é a do primeiro cadastro.
-    """
+    """Dados do microsserviço de Cartões."""
 
     SCHEMA = ("""
         CREATE TABLE IF NOT EXISTS cards (
@@ -170,20 +136,13 @@ class ExpenseStore(_Store):
     def __init__(self, path):
         super().__init__(path)
         if self._postgres:
-            # Até o Trabalho 1 havia uma chave estrangeira para cards, quando os
-            # dois serviços eram um só. Quem tem a tabela antiga perde a
-            # restrição aqui; a checagem agora é a chamada gRPC ao CardService.
             with self._lock:
                 self._run("ALTER TABLE expenses"
                           " DROP CONSTRAINT IF EXISTS expenses_card_method_fkey")
 
     def insert_expense(self, product, description, amount, card, method,
                        category, date):
-        """Insere e devolve o gasto completo (com id).
-
-        Não confere o cartão: o serviço chama o CardService antes de chegar
-        aqui, porque esta tabela não conhece os cartões.
-        """
+        """Insere e devolve o gasto completo (com id)."""
         created_at = datetime.datetime.now().isoformat(timespec="seconds")
         with self._lock:
             row = self._run(
@@ -205,6 +164,47 @@ class ExpenseStore(_Store):
             "date": date,
             "created_at": created_at,
         }
+
+    def get_expense(self, expense_id):
+        """Um gasto pelo id, ou None. Usado antes de alterar e de remover."""
+        with self._lock:
+            row = self._run(
+                "SELECT id, product, description, amount, card, method, category,"
+                " date, created_at FROM expenses WHERE id = ?",
+                (expense_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_expense(self, expense_id, product, description, amount, card,
+                       method, category, date):
+        """Regrava o gasto inteiro e devolve como ficou, ou None se não existe."""
+        with self._lock:
+            rows = self._run(
+                "UPDATE expenses SET product = ?, description = ?, amount = ?,"
+                " card = ?, method = ?, category = ?, date = ?"
+                " WHERE id = ? RETURNING created_at",
+                (product, description, amount, card, method, category, date,
+                 expense_id),
+            ).fetchall()
+        if not rows:
+            return None
+        return {
+            "id": expense_id,
+            "product": product,
+            "description": description,
+            "amount": amount,
+            "card": card,
+            "method": method,
+            "category": category,
+            "date": date,
+            "created_at": rows[0]["created_at"],
+        }
+
+    def delete_expense(self, expense_id):
+        """True se removeu, False se o id não existia."""
+        with self._lock:
+            cursor = self._run("DELETE FROM expenses WHERE id = ?", (expense_id,))
+            return cursor.rowcount > 0
 
     def search_expenses(self, filters):
         where, params = _build_where(filters)

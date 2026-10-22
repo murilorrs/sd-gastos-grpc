@@ -12,6 +12,10 @@
 # Configuração local da infraestrutura
 infra/config.sh
 
+# Frontend
+node_modules/
+web/dist/
+
 # Python
 __pycache__/
 *.pyc
@@ -20,3 +24,6 @@ __pycache__/
 # Temporários do deploy.sh (contêm a senha do banco)
 *.env.tmp
 server.env
+
+# Gerado pelo provision_gcp.sh (contém senhas)
+credenciais.txt
