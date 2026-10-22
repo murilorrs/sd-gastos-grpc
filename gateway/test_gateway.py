@@ -150,7 +150,7 @@ def check():
     assert client.post("/nlu/interpret", json={}, headers=auth).status_code == 400
 
     said = client.post("/nlu/interpret",
-                       json={"text": "gastei 89 reais num teclado no crédito do Nubank"},
+                       json={"text": "gastei 67 reais num teclado no crédito do Nubank"},
                        headers=auth)
     assert said.status_code == 200, said.text
     body = said.json()
