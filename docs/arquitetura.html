@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Arquitetura — Trabalho 2</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+
+  :root {
+    --tinta:   #0E1726;
+    --tinta-2: #33445C;
+    --fraca:   #5A6B82;
+    --linha:   #D8E0E9;
+    --acento:  #0B7F76;
+    --ok:      #0E7A47;
+    --alerta:  #9A5B06;
+    --erro:    #B3283C;
+    --fundo-2: #F4F7FA;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: "Liberation Sans", system-ui, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: var(--tinta-2);
+    background: #fff;
+  }
+
+  code, .mono { font-family: "Liberation Mono", "DejaVu Sans Mono", monospace; }
+
+  h1, h2, h3 { color: var(--tinta); margin: 0; }
+
+  .capa {
+    border-bottom: 2px solid var(--tinta);
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+  }
+  .capa .disciplina {
+    font-size: 8.5pt;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--acento);
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+  .capa h1 { font-size: 21pt; letter-spacing: -0.4px; }
+  .capa .sub { margin-top: 4px; font-size: 11pt; color: var(--fraca); }
+  .capa .autores {
+    margin-top: 10px; font-size: 10pt; color: var(--tinta); font-weight: bold;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--linha);
+    margin-bottom: 18px;
+  }
+  .meta div { flex: 1 1 150px; padding: 7px 11px; border-left: 1px solid var(--linha); }
+  .meta div:first-child { border-left: none; }
+  .meta dt {
+    font-size: 7.5pt; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--fraca); margin-bottom: 2px;
+  }
+  .meta dd { margin: 0; font-size: 9.5pt; color: var(--tinta); font-weight: bold; }
+
+  .link {
+    border: 1px solid var(--acento);
+    background: #F0FAF8;
+    padding: 9px 12px;
+    margin-bottom: 18px;
+    font-size: 10pt;
+  }
+  .link strong { color: var(--acento); }
+  .link a { color: var(--tinta); text-decoration: none; font-weight: bold; }
+
+  h2 {
+    font-size: 13pt;
+    margin: 20px 0 9px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--linha);
+  }
+  h3 { font-size: 10.5pt; margin: 13px 0 5px; }
+
+  p { margin: 0 0 9px; }
+
+  figure { margin: 0 0 14px; page-break-inside: avoid; }
+  figure svg { display: block; width: 100%; height: auto; }
+  figcaption {
+    margin-top: 7px; font-size: 8.5pt; color: var(--fraca);
+    border-top: 1px solid var(--linha); padding-top: 5px;
+  }
+
+  table { page-break-inside: avoid; width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 12px; }
+  th {
+    text-align: left; padding: 6px 8px; border-bottom: 1.5px solid var(--tinta);
+    font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fraca);
+  }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--linha); vertical-align: top; }
+  td code { font-size: 8.5pt; }
+
+  .st {
+    display: inline-block; font-family: "Liberation Mono", monospace;
+    font-size: 8pt; font-weight: bold; padding: 0 4px; border: 1px solid;
+  }
+  .st.ok   { color: var(--ok);     border-color: var(--ok); }
+  .st.al   { color: var(--alerta); border-color: var(--alerta); }
+  .st.er   { color: var(--erro);   border-color: var(--erro); }
+
+  .nota {
+    border-left: 2px solid var(--acento);
+    background: var(--fundo-2);
+    padding: 8px 11px;
+    font-size: 9.5pt;
+    margin-bottom: 12px;
+  }
+  .nota > :last-child { margin-bottom: 0; }
+
+  .rodape {
+    margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--linha);
+    font-size: 8.5pt; color: var(--fraca);
+  }
+</style>
+</head>
+<body>
+
+<header class="capa">
+  <div class="disciplina">Sistemas Distribuídos · Trabalho 2</div>
+  <h1>Controle de gastos em arquitetura de microsserviços</h1>
+  <div class="sub">Frontend web, API Gateway REST e dois microsserviços gRPC sobre PostgreSQL</div>
+  <div class="autores">Gabriel Tavares dos Santos · Caio Gabriel Alves de Oliveira · Murilo Rodrigues Santos</div>
+</header>
+
+<dl class="meta">
+  <div><dt>Disciplina</dt><dd>Sistemas Distribuídos</dd></div>
+  <div><dt>Apresentação</dt><dd>22/10/2026 · Lab 154</dd></div>
+  <div><dt>Nuvem</dt><dd>Google Cloud Platform</dd></div>
+  <div><dt>Infraestrutura</dt><dd>5 VMs, uma por serviço</dd></div>
+</dl>
+
+<div class="link">
+  <strong>Código-fonte:</strong>
+  <a href="https://github.com/murilorrs/sd-gastos-grpc">github.com/murilorrs/sd-gastos-grpc</a>
+  <br>
+  <span style="font-size:9pt;color:var(--fraca)">
+    Frontend em <code>web/</code> · API Gateway em <code>gateway/</code> ·
+    microsserviços em <code>server/</code> · contrato em <code>proto/expenses.proto</code>
+  </span>
+</div>
+
+<h2>Arquitetura de microsserviços implementada</h2>
+
+<figure>
+<svg viewBox="0 0 760 486" role="img"
+     aria-label="Arquitetura: o navegador acessa o nginx na vm-client, que serve o frontend React e repassa /api ao API Gateway na vm-server; o Gateway chama por gRPC os microsserviços de Cartões e de Gastos, em VMs próprias; o de Gastos chama o de Cartões por gRPC; ambos gravam no PostgreSQL da vm-db.">
+  <defs>
+    <marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#33445C"/>
+    </marker>
+    <marker id="sa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0B7F76"/>
+    </marker>
+  </defs>
+
+  <!-- moldura do GCP -->
+  <rect x="8" y="58" width="744" height="420" rx="4" fill="none"
+        stroke="#B9C6D4" stroke-width="1" stroke-dasharray="5 4"/>
+  <text x="20" y="76" font-size="10" fill="#5A6B82" font-weight="bold">Google Cloud Platform · VPC default</text>
+
+  <!-- navegador -->
+  <rect x="290" y="10" width="180" height="34" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.4"/>
+  <text x="380" y="31" text-anchor="middle" font-size="11.5" font-weight="bold" fill="#0E1726">Navegador do usuário</text>
+
+  <line x1="380" y1="44" x2="380" y2="92" stroke="#33445C" stroke-width="1.4" marker-end="url(#s)"/>
+  <text x="390" y="62" font-size="9.5" fill="#33445C">HTTP · porta 80</text>
+  <text x="390" y="75" font-size="8.5" fill="#5A6B82">única porta pública do sistema</text>
+
+  <!-- vm-client -->
+  <rect x="190" y="92" width="380" height="62" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.4"/>
+  <text x="202" y="110" font-size="9" fill="#5A6B82" font-weight="bold">vm-client · tag grpc-client · IP externo</text>
+  <text x="202" y="128" font-size="11" font-weight="bold" fill="#0E1726">nginx :80</text>
+  <text x="202" y="144" font-size="9.5" fill="#33445C">/ → React (build estático) · /api/* → proxy reverso para o Gateway</text>
+
+  <line x1="380" y1="154" x2="380" y2="196" stroke="#33445C" stroke-width="1.4" marker-end="url(#s)"/>
+  <text x="390" y="170" font-size="9.5" fill="#33445C">HTTP/JSON</text>
+  <text x="390" y="183" font-size="8.5" fill="#5A6B82">Authorization: Bearer &lt;JWT&gt;</text>
+
+  <!-- vm-server -->
+  <rect x="150" y="196" width="460" height="68" rx="3" fill="#F0FAF8" stroke="#0B7F76" stroke-width="1.6"/>
+  <text x="162" y="214" font-size="9" fill="#0B7F76" font-weight="bold">vm-server · tag grpc-server · sem IP externo</text>
+  <text x="162" y="232" font-size="11" font-weight="bold" fill="#0B7F76">API Gateway (FastAPI) :8000</text>
+  <text x="162" y="248" font-size="9.5" fill="#0B7F76">Ponto único de entrada · valida JWT (401) · valida payload (400)</text>
+  <text x="162" y="260" font-size="9.5" fill="#0B7F76">Desserializa JSON → serializa Protocol Buffers → despacha por gRPC</text>
+
+  <!-- setas gRPC -->
+  <line x1="224" y1="264" x2="224" y2="318" stroke="#0B7F76" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="232" y="294" font-size="9" fill="#0B7F76" font-weight="bold">gRPC</text>
+  <line x1="536" y1="264" x2="536" y2="318" stroke="#0B7F76" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="544" y="294" font-size="9" fill="#0B7F76" font-weight="bold">gRPC</text>
+
+  <!-- área de microsserviços -->
+  <rect x="90" y="302" width="580" height="96" rx="3" fill="none" stroke="#B9C6D4" stroke-dasharray="4 3"/>
+  <text x="380" y="316" text-anchor="middle" font-size="8.5" fill="#5A6B82">Área de microsserviços internos · tag grpc-service · sem IP externo</text>
+
+  <rect x="108" y="322" width="232" height="62" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.4"/>
+  <text x="120" y="340" font-size="11" font-weight="bold" fill="#0E1726">Microsserviço de Cartões</text>
+  <text x="120" y="355" font-size="9" fill="#5A6B82">gRPC :50052 · vm-cards</text>
+  <text x="120" y="372" font-size="8.5" fill="#33445C">RegisterCard · ListCards · ValidateCard</text>
+
+  <rect x="420" y="322" width="232" height="62" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.4"/>
+  <text x="432" y="340" font-size="11" font-weight="bold" fill="#0E1726">Microsserviço de Gastos</text>
+  <text x="432" y="355" font-size="9" fill="#5A6B82">gRPC :50051 · vm-expenses</text>
+  <text x="432" y="370" font-size="8.5" fill="#33445C">RegisterExpense · SearchExpenses</text>
+  <text x="432" y="380" font-size="8.5" fill="#33445C">SummaryByGroup · UpdateExpense · DeleteExpense</text>
+
+  <!-- gastos pergunta a cartões, entre as duas caixas -->
+  <line x1="416" y1="353" x2="344" y2="353" stroke="#0B7F76" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="380" y="345" text-anchor="middle" font-size="8" fill="#0B7F76" font-weight="bold">ValidateCard</text>
+  <text x="380" y="367" text-anchor="middle" font-size="8" fill="#0B7F76">gRPC</text>
+
+  <!-- banco -->
+  <line x1="224" y1="384" x2="224" y2="424" stroke="#33445C" stroke-width="1.4" marker-end="url(#s)"/>
+  <text x="122" y="408" font-size="8.5" fill="#5A6B82">tabela cards</text>
+  <line x1="536" y1="384" x2="536" y2="424" stroke="#33445C" stroke-width="1.4" marker-end="url(#s)"/>
+  <text x="544" y="408" font-size="8.5" fill="#5A6B82">tabela expenses</text>
+
+  <rect x="229" y="424" width="302" height="44" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.4"/>
+  <text x="380" y="443" text-anchor="middle" font-size="11" font-weight="bold" fill="#0E1726">PostgreSQL 16 (container Docker)</text>
+  <text x="380" y="458" text-anchor="middle" font-size="9" fill="#5A6B82">:5432 · vm-db · tag db-server · sem IP externo</text>
+</svg>
+<figcaption>
+  Cinco VMs no GCP, uma por serviço. Nenhuma seta liga o navegador diretamente
+  aos microsserviços, e nenhuma liga o Gateway ao banco: cada peça só alcança a
+  vizinha. As setas em destaque são as chamadas gRPC com Protocol Buffers.
+</figcaption>
+</figure>
+
+<h2>Componentes</h2>
+
+<table>
+  <thead>
+    <tr><th style="width:21%">Componente</th><th style="width:21%">Tecnologia</th><th>Responsabilidade</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Frontend</strong><br><span class="mono" style="font-size:8pt">web/</span></td>
+      <td>React 19, TypeScript, Vite<br>servido por nginx</td>
+      <td>Interface visual: painel com gráficos, cadastro e edição de gastos e cartões, assistente em linguagem natural e tela de diagnóstico. Comunica-se <strong>exclusivamente</strong> com o API Gateway, pelo caminho relativo <code>/api</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>API Gateway</strong><br><span class="mono" style="font-size:8pt">gateway/app.py</span></td>
+      <td>FastAPI (Python)<br>Pydantic, PyJWT, grpcio</td>
+      <td>Ponto único de entrada. Autentica o JWT, valida o payload, traduz JSON em Protocol Buffers e orquestra as chamadas aos microsserviços. Não acessa o banco.</td>
+    </tr>
+    <tr>
+      <td><strong>Microsserviço de Cartões</strong><br><span class="mono" style="font-size:8pt">server/cards_service.py</span></td>
+      <td>Python, grpcio, psycopg</td>
+      <td>Dono da tabela <code>cards</code>. Cadastra, lista e valida cartões, com correção de grafia por similaridade.</td>
+    </tr>
+    <tr>
+      <td><strong>Microsserviço de Gastos</strong><br><span class="mono" style="font-size:8pt">server/expenses_service.py</span></td>
+      <td>Python, grpcio, psycopg</td>
+      <td>Dono da tabela <code>expenses</code>. Grava, busca, soma, altera e remove. <strong>Consulta o microsserviço de Cartões por gRPC</strong> antes de gravar ou alterar.</td>
+    </tr>
+    <tr>
+      <td><strong>Banco de dados</strong><br><span class="mono" style="font-size:8pt">vm-db</span></td>
+      <td>PostgreSQL 16 em container</td>
+      <td>Persistência real. Todas as operações de consulta, inserção, alteração e remoção passam por ele.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Fluxo de uma requisição</h2>
+
+<p>
+  O registro de um gasto atravessa os cinco componentes. Cada etapa pode
+  interromper o fluxo com um status HTTP específico:
+</p>
+
+<figure>
+<svg viewBox="0 0 760 196" role="img"
+     aria-label="Fluxo de POST /expenses: o frontend monta o JSON; o Gateway valida o JWT, podendo responder 401; valida o payload, podendo responder 400; o serviço de Gastos consulta o de Cartões, podendo responder 400; e o PostgreSQL grava, resultando em 201.">
+  <defs>
+    <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#33445C"/>
+    </marker>
+  </defs>
+
+  <text x="4" y="12" font-size="9" fill="#5A6B82" font-family="monospace">POST /api/expenses  {"product":"teclado","amount":389.90,"card":"Nubank","method":"CREDIT",…}</text>
+
+  <g font-size="10" font-weight="bold" fill="#0E1726">
+    <rect x="4"   y="28" width="130" height="48" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.3"/>
+    <text x="69"  y="48" text-anchor="middle">Frontend</text>
+    <rect x="160" y="28" width="130" height="48" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.3"/>
+    <text x="225" y="48" text-anchor="middle">Gateway · JWT</text>
+    <rect x="316" y="28" width="130" height="48" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.3"/>
+    <text x="381" y="48" text-anchor="middle">Gateway · payload</text>
+    <rect x="472" y="28" width="150" height="48" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.3"/>
+    <text x="547" y="48" text-anchor="middle">Gastos → Cartões</text>
+    <rect x="648" y="28" width="108" height="48" rx="3" fill="#fff" stroke="#33445C" stroke-width="1.3"/>
+    <text x="702" y="48" text-anchor="middle">PostgreSQL</text>
+  </g>
+
+  <g font-size="8" fill="#5A6B82" text-anchor="middle">
+    <text x="69"  y="64">monta o JSON</text>
+    <text x="225" y="64">confere a assinatura</text>
+    <text x="381" y="64">modelos Pydantic</text>
+    <text x="547" y="64">ValidateCard (gRPC)</text>
+    <text x="702" y="64">INSERT</text>
+  </g>
+
+  <g stroke="#33445C" stroke-width="1.3" marker-end="url(#f)">
+    <line x1="134" y1="52" x2="156" y2="52"/>
+    <line x1="290" y1="52" x2="312" y2="52"/>
+    <line x1="446" y1="52" x2="468" y2="52"/>
+    <line x1="622" y1="52" x2="644" y2="52"/>
+  </g>
+
+  <g stroke="#33445C" stroke-width="1.1" stroke-dasharray="3 2" marker-end="url(#f)" opacity="0.8">
+    <line x1="225" y1="76" x2="225" y2="118"/>
+    <line x1="381" y1="76" x2="381" y2="118"/>
+    <line x1="547" y1="76" x2="547" y2="118"/>
+  </g>
+  <line x1="702" y1="76" x2="702" y2="118" stroke="#0B7F76" stroke-width="1.4" marker-end="url(#f)"/>
+
+  <g font-size="10" font-weight="bold" text-anchor="middle" font-family="monospace">
+    <rect x="190" y="120" width="70" height="20" rx="2" fill="#fff" stroke="#9A5B06" stroke-width="1.2"/>
+    <text x="225" y="134" fill="#9A5B06">401</text>
+    <rect x="346" y="120" width="70" height="20" rx="2" fill="#fff" stroke="#B3283C" stroke-width="1.2"/>
+    <text x="381" y="134" fill="#B3283C">400</text>
+    <rect x="512" y="120" width="70" height="20" rx="2" fill="#fff" stroke="#B3283C" stroke-width="1.2"/>
+    <text x="547" y="134" fill="#B3283C">400</text>
+    <rect x="667" y="120" width="70" height="20" rx="2" fill="#fff" stroke="#0B7F76" stroke-width="1.4"/>
+    <text x="702" y="134" fill="#0B7F76">201</text>
+  </g>
+
+  <g font-size="8" fill="#5A6B82" text-anchor="middle">
+    <text x="225" y="156">sem token, ou</text>
+    <text x="225" y="166">token inválido</text>
+    <text x="381" y="156">campo ausente,</text>
+    <text x="381" y="166">valor ≤ 0, data inválida</text>
+    <text x="547" y="156">o cartão não existe</text>
+    <text x="547" y="166">naquele método</text>
+    <text x="702" y="156">o gasto gravado,</text>
+    <text x="702" y="166">com id</text>
+  </g>
+</svg>
+<figcaption>
+  As três saídas tracejadas interrompem o fluxo antes do banco. O
+  <span class="st al">401</span> ocorre antes de qualquer canal gRPC ser aberto;
+  o primeiro <span class="st er">400</span> é validação de formato, e o segundo é
+  validação de negócio, decidida pelo microsserviço de Cartões.
+</figcaption>
+</figure>
+
+<h2>Contrato gRPC</h2>
+
+<p>
+  O arquivo <code>proto/expenses.proto</code> define dois serviços e oito RPCs.
+  Os stubs não são versionados: são gerados a partir do contrato em cada
+  instalação, o que impede divergência entre as pontas.
+</p>
+
+<table>
+  <thead><tr><th style="width:18%">Serviço</th><th style="width:22%">RPC</th><th style="width:16%">Tipo</th><th>Finalidade</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="3"><strong>CardService</strong><br><span class="mono" style="font-size:8pt">:50052</span></td>
+        <td><code>RegisterCard</code></td><td>unário</td><td>Cadastra a dupla (nome, método de pagamento).</td></tr>
+    <tr><td><code>ListCards</code></td><td>unário</td><td>Lista os cartões cadastrados.</td></tr>
+    <tr><td><code>ValidateCard</code></td><td>unário</td><td>Confere um cartão e sugere nomes parecidos em caso de erro de digitação.</td></tr>
+    <tr><td rowspan="5"><strong>ExpenseService</strong><br><span class="mono" style="font-size:8pt">:50051</span></td>
+        <td><code>RegisterExpense</code></td><td>unário</td><td>Grava o gasto, após consultar o CardService.</td></tr>
+    <tr><td><code>SearchExpenses</code></td><td><strong>server-streaming</strong></td><td>Devolve os gastos um a um, conforme os lê do banco.</td></tr>
+    <tr><td><code>SummaryByGroup</code></td><td>unário</td><td>Totais agrupados por categoria, cartão ou método.</td></tr>
+    <tr><td><code>UpdateExpense</code></td><td>unário</td><td>Altera o gasto, revalidando o cartão.</td></tr>
+    <tr><td><code>DeleteExpense</code></td><td>unário</td><td>Remove o gasto.</td></tr>
+  </tbody>
+</table>
+
+<h2>Segurança de rede</h2>
+
+<p>
+  Os microsserviços escutam em <code>0.0.0.0</code> por terem VMs próprias. O
+  isolamento é garantido por pares de regras de firewall, avaliadas por
+  prioridade — no GCP, o menor número é avaliado primeiro:
+</p>
+
+<table>
+  <thead><tr><th style="width:12%">Prioridade</th><th style="width:12%">Ação</th><th style="width:18%">Porta</th><th style="width:30%">Origem</th><th>Destino</th></tr></thead>
+  <tbody>
+    <tr><td>1000</td><td>permitir</td><td><code>tcp:80</code></td><td><code>0.0.0.0/0</code></td><td><code>grpc-client</code></td></tr>
+    <tr><td>1000</td><td>permitir</td><td><code>tcp:8000</code></td><td><code>10.128.0.0/9</code> (VPC)</td><td><code>grpc-server</code></td></tr>
+    <tr><td><strong>800</strong></td><td>permitir</td><td><code>tcp:50051,50052</code></td><td>tags <code>grpc-server</code>, <code>grpc-service</code></td><td><code>grpc-service</code></td></tr>
+    <tr><td><strong>900</strong></td><td><strong>negar</strong></td><td><code>tcp:50051,50052</code></td><td><code>0.0.0.0/0</code></td><td><code>grpc-service</code></td></tr>
+    <tr><td><strong>800</strong></td><td>permitir</td><td><code>tcp:5432</code></td><td>tag <code>grpc-service</code></td><td><code>db-server</code></td></tr>
+    <tr><td><strong>900</strong></td><td><strong>negar</strong></td><td><code>tcp:5432</code></td><td><code>0.0.0.0/0</code></td><td><code>db-server</code></td></tr>
+  </tbody>
+</table>
+
+<div class="nota">
+  <p>
+    A regra <code>default-allow-internal</code>, criada automaticamente pelo GCP
+    em toda VPC, libera todas as portas entre VMs e tem prioridade 65534 — nunca
+    é alcançada para essas portas. Sem as regras de negação, a VM do frontend
+    conseguiria falar diretamente com os microsserviços, violando o requisito de
+    que o frontend se comunique apenas com o Gateway.
+  </p>
+</div>
+
+<h2>Atendimento aos requisitos</h2>
+
+<table>
+  <thead><tr><th style="width:36%">Requisito</th><th>Implementação</th></tr></thead>
+  <tbody>
+    <tr><td>Interface visual funcional</td><td><code>web/</code> — React + TypeScript, cinco telas</td></tr>
+    <tr><td>Frontend fala apenas com o Gateway</td><td>Todas as chamadas vão para <code>/api</code>; não há endereço de microsserviço no código do frontend, e o firewall o impediria de alcançá-los</td></tr>
+    <tr><td>API Gateway REST, ponto único de entrada</td><td><code>gateway/app.py</code> — FastAPI</td></tr>
+    <tr><td>Mínimo de 2 microsserviços via gRPC</td><td><code>server/cards_service.py</code> e <code>server/expenses_service.py</code>; contrato em <code>proto/expenses.proto</code></td></tr>
+    <tr><td>Comunicação entre microsserviços</td><td><code>ExpenseService._validate_card</code> chama <code>CardService.ValidateCard</code> antes de gravar e de alterar</td></tr>
+    <tr><td>Banco de dados real, sem mocks</td><td>PostgreSQL 16; consulta, inserção, alteração e remoção passam por ele. Não há lista em memória no projeto</td></tr>
+    <tr><td>Validação com <span class="st er">400</span> e <span class="st ok">201</span></td><td>Modelos Pydantic no Gateway; tratador converte o 422 padrão do FastAPI em 400</td></tr>
+    <tr><td>Autenticação JWT com <span class="st al">401</span></td><td>Dependência <code>require_token</code> aplicada ao roteador inteiro de negócio</td></tr>
+    <tr><td>Tradução JSON → Protobuf → JSON</td><td>Função <code>call()</code> do Gateway, que registra em log o tamanho de cada mensagem protobuf</td></tr>
+  </tbody>
+</table>
+
+<div class="rodape">
+  Documentação da arquitetura e da API no <code>README.md</code> do repositório.
+</div>
+
+</body>
+</html>

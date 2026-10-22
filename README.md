@@ -1,6 +1,7 @@
 # Expense tracking over gRPC
 
-> **Integrantes:** Murilo Rodrigues, Caio Oliveira, (preencher)
+> **Integrantes:** Gabriel Tavares dos Santos, Caio Gabriel Alves de Oliveira,
+> Murilo Rodrigues Santos
 
 Sistema de controle de gastos pessoais: interface web em React, API Gateway em
 FastAPI, dois microsserviços gRPC e PostgreSQL. Cada serviço roda na sua
