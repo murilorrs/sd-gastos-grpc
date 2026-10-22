@@ -87,6 +87,10 @@ else
   gcloud compute routers create nat-router --network=default --region="$REGION" --quiet
   gcloud compute routers nats create nat-config --router=nat-router --region="$REGION" \
     --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges --quiet
+  # ponytail: espera fixa; o NAT recém-criado leva ~1 min para dar saída, e
+  # uma VM que liga antes disso falha no apt-get do script de inicialização.
+  echo "       esperando o NAT ficar ativo (90s)"
+  sleep 90
 fi
 
 # -------------------------------------------------------------------- VMs
