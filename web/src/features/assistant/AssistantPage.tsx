@@ -113,7 +113,7 @@ const AssistantPage: React.FC = () => {
                     <Sparkles size={18} className="assistant-form-icon" />
                     <input
                         className="assistant-input"
-                        placeholder="gastei 89 reais num teclado no crédito do Nubank"
+                        placeholder="gastei 67 reais num teclado no crédito do Nubank"
                         value={text}
                         onChange={(event) => setText(event.target.value)}
                         disabled={busy}
