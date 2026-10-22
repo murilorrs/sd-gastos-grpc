@@ -202,6 +202,7 @@ gcloud compute instances delete vm-db vm-cards vm-expenses vm-server vm-client \
 gcloud compute firewall-rules delete allow-web-external allow-gateway-internal \
   allow-grpc-internal deny-grpc-external allow-postgres-internal \
   deny-postgres-external --quiet
+gcloud compute routers delete nat-router --region=us-central1 --quiet
 ```
 
 ## Rodando sem nuvem nenhuma

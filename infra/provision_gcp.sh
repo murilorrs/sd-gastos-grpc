@@ -78,7 +78,19 @@ regra allow-postgres-internal --action=allow --direction=ingress --priority=800 
 regra deny-postgres-external --action=deny --direction=ingress --priority=900 \
   --rules=tcp:5432 --source-ranges=0.0.0.0/0 --target-tags=db-server
 
+# Sem IP externo, as VMs só saem para a internet (apt, git clone, docker
+# pull) pelo Cloud NAT.
+passo "Cloud NAT"
+if gcloud compute routers describe nat-router --region="$REGION" --quiet >/dev/null 2>&1; then
+  ja "nat-router"
+else
+  gcloud compute routers create nat-router --network=default --region="$REGION" --quiet
+  gcloud compute routers nats create nat-config --router=nat-router --region="$REGION" \
+    --auto-allocate-nat-external-ips --nat-all-subnet-ip-ranges --quiet
+fi
+
 # -------------------------------------------------------------------- VMs
+DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -base64 48 | tr -d '\n')}"
 GATEWAY_USER="${GATEWAY_USER:-demo}"
 GATEWAY_PASSWORD="${GATEWAY_PASSWORD:-$(openssl rand -base64 18 | tr -d '/+=' | head -c 16)}"
